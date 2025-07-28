@@ -1,11 +1,10 @@
-// routes/contacts.js
+// routes/contacts.js (Updated)
 const express = require('express');
 const router = express.Router();
 const Contact = require('../models/Contact.js');
+const auth = require('../middleware/auth.js'); // <<< NEW: Import the auth middleware
 
-// @route   GET /api/contacts
-// @desc    Get all contacts
-router.get('/', async (req, res) => {
+router.get('/', auth, async (req, res) => { // <<< UPDATED
   try {
     const contacts = await Contact.find().sort({ createdAt: -1 });
     res.status(200).json(contacts);
@@ -14,18 +13,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-// @route   POST /api/contacts
-// @desc    Create a new contact
-router.post('/', async (req, res) => {
+router.post('/', auth, async (req, res) => { // <<< UPDATED
   const { firstName, lastName, email, phone, leadId } = req.body;
   try {
-    const newContact = new Contact({
-      firstName,
-      lastName,
-      email,
-      phone,
-      leadId,
-    });
+    const newContact = new Contact({ firstName, lastName, email, phone, leadId });
     const savedContact = await newContact.save();
     res.status(201).json(savedContact);
   } catch (error) {
