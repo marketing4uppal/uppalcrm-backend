@@ -5,7 +5,8 @@ const dotenv = require('dotenv');
 const cors = require('cors');
 
 const leadRoutes = require('./routes/leads.js');
-const contactRoutes = require('./routes/contacts.js'); // <<< NEW
+const contactRoutes = require('./routes/contacts.js');
+const authRoutes = require('./routes/auth.js'); // <<< NEW
 
 dotenv.config();
 const app = express();
@@ -14,7 +15,8 @@ app.use(express.json());
 
 // API Routes
 app.use('/api/leads', leadRoutes);
-app.use('/api/contacts', contactRoutes); // <<< NEW
+app.use('/api/contacts', contactRoutes);
+app.use('/api/auth', authRoutes); // <<< NEW
 
 app.get('/', (req, res) => {
   res.send('CRM Backend is running and connected to the database!');
