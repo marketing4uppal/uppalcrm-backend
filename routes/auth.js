@@ -1,75 +1,70 @@
-// routes/auth.js
+// routes/auth.js (Updated for Organizations)
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User.js');
+const Organization = require('../models/Organization.js'); // <<< NEW
 
 // @route   POST /api/auth/register
-// @desc    Register a new user
+// @desc    Register a new business (Organization and first Admin User)
 router.post('/register', async (req, res) => {
-  const { firstName, lastName, email, password } = req.body;
+  const { firstName, lastName, email, password, businessName } = req.body;
 
   try {
-    // 1. Check if user already exists
+    // 1. Check if a user with this email already exists
     let user = await User.findOne({ email });
     if (user) {
-      return res.status(400).json({ message: 'User already exists' });
+      return res.status(400).json({ message: 'User with this email already exists' });
     }
 
-    // 2. Create a new user instance
-    user = new User({ firstName, lastName, email, password });
+    // 2. Create the new Organization
+    const newOrganization = new Organization({ name: businessName });
+    const savedOrganization = await newOrganization.save();
 
-    // 3. Hash the password before saving
+    // 3. Create the new User
+    user = new User({
+      firstName,
+      lastName,
+      email,
+      password,
+      organizationId: savedOrganization._id, // Link user to the new organization
+      role: 'admin', // Make the first user an admin
+    });
+
+    // 4. Hash the password
     const salt = await bcrypt.genSalt(10);
     user.password = await bcrypt.hash(password, salt);
 
-    // 4. Save the user to the database
+    // 5. Save the user
     await user.save();
-    res.status(201).json({ message: 'User registered successfully' });
+
+    res.status(201).json({ message: 'Organization and admin user registered successfully' });
 
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    console.error(error);
+    res.status(500).json({ message: 'Server error during registration' });
   }
 });
 
-// @route   POST /api/auth/login
-// @desc    Log in a user and get a token
+// ... The '/login' route remains the same ...
 router.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    // 1. Check if the user exists
-    const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+    //... no changes needed here
+    const { email, password } = req.body;
+    try {
+        const user = await User.findOne({ email });
+        if (!user) { return res.status(400).json({ message: 'Invalid credentials' }); }
+        const isMatch = await bcrypt.compare(password, user.password);
+        if (!isMatch) { return res.status(400).json({ message: 'Invalid credentials' }); }
+        const payload = { user: { id: user.id } };
+        jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: 3600 }, (err, token) => {
+            if (err) throw err;
+            res.json({ token });
+        });
+    } catch (error) {
+        res.status(500).json({ message: error.message });
     }
-
-    // 2. Compare the provided password with the stored hashed password
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
-    }
-
-    // 3. If credentials are correct, create a JWT
-    const payload = {
-      user: {
-        id: user.id, // This is the user's ID from the database
-      },
-    };
-
-    jwt.sign(
-      payload,
-      process.env.JWT_SECRET, // A secret key for signing the token
-      { expiresIn: 3600 }, // Token expires in 1 hour
-      (err, token) => {
-        if (err) throw err;
-        res.json({ token }); // Send the token back to the client
-      }
-    );
-  } catch (error) {
-    res.status(500).json({ message: error.message });
-  }
 });
+
 
 module.exports = router;
