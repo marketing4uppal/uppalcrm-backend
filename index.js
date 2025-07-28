@@ -9,7 +9,8 @@ const leadRoutes = require('./routes/leads.js'); // <<< NEW LINE
 
 dotenv.config();
 const app = express();
-app.use(cors());
+// Allow requests from any origin
+app.use(cors({ origin: "*" }));
 app.use(express.json());
 
 // API Routes
