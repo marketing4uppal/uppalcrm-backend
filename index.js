@@ -1,20 +1,20 @@
-// index.js
-
+// index.js (Updated)
 const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 
-const leadRoutes = require('./routes/leads.js'); // <<< NEW LINE
+const leadRoutes = require('./routes/leads.js');
+const contactRoutes = require('./routes/contacts.js'); // <<< NEW
 
 dotenv.config();
 const app = express();
-// Allow requests from any origin
-app.use(cors({ origin: "*" }));
+app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 // API Routes
-app.use('/api/leads', leadRoutes); // <<< NEW LINE
+app.use('/api/leads', leadRoutes);
+app.use('/api/contacts', contactRoutes); // <<< NEW
 
 app.get('/', (req, res) => {
   res.send('CRM Backend is running and connected to the database!');
