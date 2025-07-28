@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User.js');
 const Organization = require('../models/Organization.js'); // <<< NEW
+const auth = require('../middleware/auth.js');
 
 // @route   POST /api/auth/register
 // @desc    Register a new business (Organization and first Admin User)
