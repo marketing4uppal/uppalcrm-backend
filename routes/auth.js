@@ -47,24 +47,47 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// ... The '/login' route remains the same ...
-router.post('/login', async (req, res) => {
-    //... no changes needed here
-    const { email, password } = req.body;
-    try {
-        const user = await User.findOne({ email });
-        if (!user) { return res.status(400).json({ message: 'Invalid credentials' }); }
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) { return res.status(400).json({ message: 'Invalid credentials' }); }
-        const payload = { user: { id: user.id } };
-        jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: 3600 }, (err, token) => {
-            if (err) throw err;
-            res.json({ token });
-        });
-    } catch (error) {
-        res.status(500).json({ message: error.message });
-    }
-});
+// routes/auth.js (Updated /login route)
 
+// ... leave the '/register' route as is ...
+
+// @route   POST /api/auth/login
+// @desc    Log in a user and get a token
+router.post('/login', async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+
+    // <<< CHANGE IS HERE: We now include more info in the token's payload
+    const payload = {
+      user: {
+        id: user.id,
+        role: user.role,
+        organizationId: user.organizationId,
+      },
+    };
+
+    jwt.sign(
+      payload,
+      process.env.JWT_SECRET,
+      { expiresIn: 3600 },
+      (err, token) => {
+        if (err) throw err;
+        res.json({ token });
+      }
+    );
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 
 module.exports = router;

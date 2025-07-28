@@ -1,24 +1,33 @@
-// routes/leads.js (Updated)
+// routes/leads.js (Updated for Multi-Tenancy)
 const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead.js');
-const auth = require('../middleware/auth.js'); // <<< NEW: Import the auth middleware
+const auth = require('../middleware/auth.js');
 
-// We add 'auth' as a second argument.
-// Now, only authenticated users can access this route.
-router.get('/', auth, async (req, res) => { // <<< UPDATED
+// GET all leads for the user's organization
+router.get('/', auth, async (req, res) => {
   try {
-    const leads = await Lead.find().sort({ createdAt: -1 });
+    // Find only leads that match the user's organizationId
+    const leads = await Lead.find({ organizationId: req.user.organizationId }).sort({ createdAt: -1 });
     res.status(200).json(leads);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 });
 
-router.post('/', auth, async (req, res) => { // <<< UPDATED
+// POST a new lead for the user's organization
+router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   try {
-    const newLead = new Lead({ firstName, lastName, email, phone, leadSource, leadStage });
+    const newLead = new Lead({
+      firstName,
+      lastName,
+      email,
+      phone,
+      leadSource,
+      leadStage,
+      organizationId: req.user.organizationId, // Automatically assign the organizationId
+    });
     const savedLead = await newLead.save();
     res.status(201).json(savedLead);
   } catch (error) {
