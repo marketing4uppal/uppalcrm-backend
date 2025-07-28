@@ -1,43 +1,22 @@
-// models/Lead.js
-
+// models/Lead.js (Updated)
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema(
   {
-    firstName: {
-      type: String,
+    firstName: { type: String, required: true, min: 2, max: 50, },
+    lastName: { type: String, required: true, min: 2, max: 50, },
+    email: { type: String, required: true, max: 50, unique: true, },
+    phone: { type: String, default: "", },
+    leadSource: { type: String, default: "", },
+    leadStage: { type: String, enum: ["New", "Contacted", "Qualified", "Lost", "Won"], default: "New", },
+    // NEW: Link lead to an organization
+    organizationId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Organization',
       required: true,
-      min: 2,
-      max: 50,
-    },
-    lastName: {
-      type: String,
-      required: true,
-      min: 2,
-      max: 50,
-    },
-    email: {
-      type: String,
-      required: true,
-      max: 50,
-      unique: true, // Each lead must have a unique email
-    },
-    phone: {
-      type: String,
-      default: "",
-    },
-    leadSource: {
-      type: String,
-      default: "",
-    },
-    leadStage: {
-      type: String,
-      // You can define the specific stages you want here
-      enum: ["New", "Contacted", "Qualified", "Lost", "Won"],
-      default: "New",
     },
   },
-  { timestamps: true } // This automatically adds 'createdAt' and 'updatedAt' fields
+  { timestamps: true }
 );
 
 const Lead = mongoose.model("Lead", LeadSchema);

@@ -1,28 +1,17 @@
-// models/Contact.js
+// models/Contact.js (Updated)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
-    firstName: {
-      type: String,
-      required: true,
-    },
-    lastName: {
-      type: String,
-      required: true,
-    },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-    },
-    phone: {
-      type: String,
-    },
-    // This links the contact to a specific Lead
-    leadId: {
+    firstName: { type: String, required: true, },
+    lastName: { type: String, required: true, },
+    email: { type: String, required: true, unique: true, },
+    phone: { type: String, },
+    leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', required: true, },
+    // NEW: Link contact to an organization
+    organizationId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Lead',
+      ref: 'Organization',
       required: true,
     },
   },
