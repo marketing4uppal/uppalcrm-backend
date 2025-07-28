@@ -89,5 +89,17 @@ router.post('/login', async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+// routes/auth.js (add this code at the bottom)
 
+// @route   GET /api/auth/me
+// @desc    Get the current logged-in user's data
+router.get('/me', auth, async (req, res) => {
+  try {
+    // req.user.id is available from the 'auth' middleware
+    const user = await User.findById(req.user.id).select('-password');
+    res.json(user);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
+  }
+});
 module.exports = router;
