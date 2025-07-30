@@ -18,6 +18,8 @@ app.use(express.json());
 // API Routes
 app.use('/api/leads', leadRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/deals', require('./routes/deals')); // <<< ADD THIS
+app.use('/api/dealstages', require('./routes/dealStages')); 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes); // <<< NEW
 app.use('/api/leadhistory', leadHistoryRoutes);
