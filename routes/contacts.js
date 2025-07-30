@@ -14,6 +14,32 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// PUT update a contact
+router.put('/:id', auth, async (req, res) => {
+  const { firstName, lastName, email, phone } = req.body;
+  
+  try {
+    const updatedContact = await Contact.findOneAndUpdate(
+      { _id: req.params.id, organizationId: req.user.organizationId },
+      { firstName, lastName, email, phone },
+      { new: true }
+    );
+
+    if (!updatedContact) {
+      return res.status(404).json({ message: 'Contact not found' });
+    }
+
+    res.status(200).json({
+      contact: updatedContact,
+      message: 'Contact updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Error updating contact:', error);
+    res.status(400).json({ message: error.message });
+  }
+});
+
 // POST a new contact for the user's organization
 router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadId } = req.body;
