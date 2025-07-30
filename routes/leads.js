@@ -1,9 +1,10 @@
-// routes/leads.js (Updated for Multi-Tenancy with Auto Contact Creation and History Tracking)
+// routes/leads.js (Updated with Auto Deal Creation)
 const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead.js');
 const Contact = require('../models/Contact.js');
-const LeadHistory = require('../models/LeadHistory.js'); // Add this import
+const Deal = require('../models/Deal.js');
+const LeadHistory = require('../models/LeadHistory.js');
 const auth = require('../middleware/auth.js');
 
 // GET all leads for the user's organization
@@ -17,7 +18,7 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// GET single lead by ID (NEW - needed for sync)
+// GET single lead by ID (needed for sync)
 router.get('/:id', auth, async (req, res) => {
   try {
     const lead = await Lead.findOne({ 
@@ -98,12 +99,46 @@ router.post('/', auth, async (req, res) => {
     const savedContact = await newContact.save();
     console.log('Contact created successfully:', savedContact._id); // Debug log
 
-    // Step 4: Return both lead and contact info
-    res.status(201).json({
+    // Step 4: If lead is Qualified, create a Deal
+    let createdDeal = null;
+    if (leadStage === 'Qualified') {
+      try {
+        const newDeal = new Deal({
+          firstName,
+          lastName,
+          stage: 'Qualified',
+          closeDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+          leadSource,
+          owner: req.user.id,
+          amount: 0, // Default amount, can be updated later
+          currency: 'USD',
+          leadId: savedLead._id,
+          contactId: savedContact._id,
+          organizationId: req.user.organizationId,
+          createdBy: req.user.id
+        });
+
+        createdDeal = await newDeal.save();
+        console.log('Deal created successfully:', createdDeal._id);
+      } catch (dealError) {
+        console.error('Error creating deal:', dealError);
+        // Don't fail the whole operation if deal creation fails
+      }
+    }
+
+    // Step 5: Return response
+    const response = {
       lead: savedLead,
       contact: savedContact,
-      message: 'Lead, Contact, and History created successfully'
-    });
+      message: 'Lead and Contact created successfully'
+    };
+
+    if (createdDeal) {
+      response.deal = createdDeal;
+      response.message = 'Lead, Contact, and Deal created successfully';
+    }
+
+    res.status(201).json(response);
 
   } catch (error) {
     console.error('Error in lead creation:', error); // Debug log
@@ -121,7 +156,7 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// PUT update a lead (with history tracking)
+// PUT update a lead (with history tracking and deal creation)
 router.put('/:id', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   
@@ -194,10 +229,52 @@ router.put('/:id', auth, async (req, res) => {
       await historyEntry.save();
     }
 
-    res.status(200).json({
+    // Step 5: Check if lead was just marked as Qualified and create deal
+    let createdDeal = null;
+    if (currentLead.leadStage !== 'Qualified' && leadStage === 'Qualified') {
+      try {
+        // Find associated contact
+        const associatedContact = await Contact.findOne({ leadId: updatedLead._id });
+        
+        // Check if deal already exists for this lead
+        const existingDeal = await Deal.findOne({ leadId: updatedLead._id });
+        
+        if (!existingDeal) {
+          const newDeal = new Deal({
+            firstName,
+            lastName,
+            stage: 'Qualified',
+            closeDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
+            leadSource,
+            owner: req.user.id,
+            amount: 0, // Default amount
+            currency: 'USD',
+            leadId: updatedLead._id,
+            contactId: associatedContact ? associatedContact._id : null,
+            organizationId: req.user.organizationId,
+            createdBy: req.user.id
+          });
+
+          createdDeal = await newDeal.save();
+          console.log('Deal created for qualified lead:', createdDeal._id);
+        }
+      } catch (dealError) {
+        console.error('Error creating deal for qualified lead:', dealError);
+        // Don't fail the whole operation
+      }
+    }
+
+    const response = {
       lead: updatedLead,
       message: 'Lead updated successfully'
-    });
+    };
+
+    if (createdDeal) {
+      response.deal = createdDeal;
+      response.message = 'Lead updated and Deal created successfully';
+    }
+
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('Error updating lead:', error);
