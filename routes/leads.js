@@ -17,6 +17,25 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// GET single lead by ID (NEW - needed for sync)
+router.get('/:id', auth, async (req, res) => {
+  try {
+    const lead = await Lead.findOne({ 
+      _id: req.params.id, 
+      organizationId: req.user.organizationId 
+    });
+    
+    if (!lead) {
+      return res.status(404).json({ message: 'Lead not found' });
+    }
+    
+    res.status(200).json(lead);
+  } catch (error) {
+    console.error('Error fetching lead:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // POST a new lead for the user's organization (with automatic contact creation and history tracking)
 router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
