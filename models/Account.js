@@ -97,12 +97,18 @@ const AccountSchema = new mongoose.Schema({
 });
 
 // Auto-generate account number
+// Auto-generate account number
 AccountSchema.pre('save', async function(next) {
-  if (this.isNew && !this.accountNumber) {
-    const count = await this.constructor.countDocuments({ organizationId: this.organizationId });
-    this.accountNumber = `ACC-${this.organizationId.toString().slice(-6).toUpperCase()}-${(count + 1).toString().padStart(4, '0')}`;
+  try {
+    if (this.isNew && !this.accountNumber) {
+      console.log('Generating account number for organizationId:', this.organizationId);
+      const count = await this.constructor.countDocuments({ organizationId: this.organizationId });
+      this.accountNumber = `ACC-${this.organizationId.toString().slice(-6).toUpperCase()}-${(count + 1).toString().padStart(4, '0')}`;
+      console.log('Generated account number:', this.accountNumber);
+    }
+    next();
+  } catch (error) {
+    console.error('Error generating account number:', error);
+    next(error);
   }
-  next();
 });
-
-module.exports = mongoose.model('Account', AccountSchema);
