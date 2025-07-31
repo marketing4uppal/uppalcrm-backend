@@ -87,16 +87,21 @@ router.post('/', auth, async (req, res) => {
     console.log('Lead history entry created'); // Debug log
 
     // Step 3: Create associated Contact
-    const newContact = new Contact({
-      firstName,
-      lastName,
-      email,
-      phone,
-      leadId: savedLead._id, // Link to the lead we just created
-      organizationId: req.user.organizationId, // Same organization
-    });
+// Step 3: Create associated Contact
+const newContact = new Contact({
+  firstName,
+  lastName,
+  email,
+  phone,
+  organizationId: req.user.organizationId, // Same organization
+  createdBy: req.user.id
+});
 
-    const savedContact = await newContact.save();
+const savedContact = await newContact.save();
+
+// Step 3b: Update the lead to reference the contact
+savedLead.contactId = savedContact._id;
+await savedLead.save();
     console.log('Contact created successfully:', savedContact._id); // Debug log
 
     // Step 4: If lead is Qualified, create a Deal
@@ -234,7 +239,7 @@ router.put('/:id', auth, async (req, res) => {
     if (currentLead.leadStage !== 'Qualified' && leadStage === 'Qualified') {
       try {
         // Find associated contact
-        const associatedContact = await Contact.findOne({ leadId: updatedLead._id });
+        const associatedContact = await Contact.findById(updatedLead.contactId);
         
         // Check if deal already exists for this lead
         const existingDeal = await Deal.findOne({ leadId: updatedLead._id });

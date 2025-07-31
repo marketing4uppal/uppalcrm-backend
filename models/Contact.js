@@ -1,22 +1,118 @@
-// models/Contact.js (Updated)
+// models/Contact.js (Updated for Account-Centric Architecture)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
-    firstName: { type: String, required: true, },
-    lastName: { type: String, required: true, },
-    email: { type: String, required: true, unique: true, },
-    phone: { type: String, },
-    leadId: { type: mongoose.Schema.Types.ObjectId, ref: 'Lead', required: true, },
-    // NEW: Link contact to an organization
+    firstName: { 
+      type: String, 
+      required: true,
+      trim: true,
+      min: 2,
+      max: 50
+    },
+    lastName: { 
+      type: String, 
+      required: true,
+      trim: true,
+      min: 2,
+      max: 50
+    },
+    email: { 
+      type: String, 
+      required: true,
+      trim: true,
+      lowercase: true,
+      max: 100
+      // Removed unique constraint to allow same contact for multiple leads
+    },
+    phone: { 
+      type: String,
+      trim: true
+    },
+    
+    // Additional contact fields
+    company: {
+      type: String,
+      trim: true
+    },
+    jobTitle: {
+      type: String,
+      trim: true
+    },
+    address: {
+      street: { type: String, trim: true },
+      city: { type: String, trim: true },
+      state: { type: String, trim: true },
+      zipCode: { type: String, trim: true },
+      country: { type: String, trim: true }
+    },
+    
+    // Social/Web presence
+    linkedin: { type: String, trim: true },
+    website: { type: String, trim: true },
+    
+    // Notes and tags
+    notes: { type: String, trim: true },
+    tags: [{ type: String, trim: true }],
+    
+    // Status
+    isActive: { type: Boolean, default: true },
+    
+    // Organization relationship
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
       required: true,
     },
+    
+    // Tracking
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    lastContactedDate: {
+      type: Date
+    }
   },
   { timestamps: true }
 );
+
+// Indexes for performance
+ContactSchema.index({ organizationId: 1, email: 1 });
+ContactSchema.index({ organizationId: 1, lastName: 1, firstName: 1 });
+ContactSchema.index({ organizationId: 1, company: 1 });
+ContactSchema.index({ createdBy: 1 });
+
+// Virtual for full name
+ContactSchema.virtual('fullName').get(function() {
+  return `${this.firstName} ${this.lastName}`;
+});
+
+// Virtual to get all leads for this contact
+ContactSchema.virtual('leads', {
+  ref: 'Lead',
+  localField: '_id',
+  foreignField: 'contactId'
+});
+
+// Virtual to get all accounts for this contact
+ContactSchema.virtual('accounts', {
+  ref: 'Account',
+  localField: '_id',
+  foreignField: 'contactId'
+});
+
+// Virtual to get all deals for this contact
+ContactSchema.virtual('deals', {
+  ref: 'Deal',
+  localField: '_id',
+  foreignField: 'contactId'
+});
+
+// Enable virtual fields in JSON output
+ContactSchema.set('toJSON', { virtuals: true });
+ContactSchema.set('toObject', { virtuals: true });
 
 const Contact = mongoose.model('Contact', ContactSchema);
 module.exports = Contact;
