@@ -38,13 +38,27 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // POST a new lead for the user's organization (with automatic contact creation and history tracking)
+// POST a new lead for the user's organization (with automatic contact creation and history tracking)
 router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   
   console.log('Creating lead with data:', { firstName, lastName, email }); // Debug log
   
   try {
-    // Step 1: Create the Lead first
+    // Step 1: Create the Contact first (since Lead now requires contactId)
+    const newContact = new Contact({
+      firstName,
+      lastName,
+      email,
+      phone,
+      organizationId: req.user.organizationId,
+      createdBy: req.user.id
+    });
+
+    const savedContact = await newContact.save();
+    console.log('Contact created successfully:', savedContact._id);
+
+    // Step 2: Create the Lead with contactId reference
     const newLead = new Lead({
       firstName,
       lastName,
@@ -52,13 +66,15 @@ router.post('/', auth, async (req, res) => {
       phone,
       leadSource,
       leadStage,
-      organizationId: req.user.organizationId, // Automatically assign the organizationId
+      contactId: savedContact._id, // Reference to the contact we just created
+      organizationId: req.user.organizationId,
+      createdBy: req.user.id
     });
-    
-    const savedLead = await newLead.save();
-    console.log('Lead created successfully:', savedLead._id); // Debug log
 
-    // Step 2: Create history entry for lead creation
+    const savedLead = await newLead.save();
+    console.log('Lead created successfully:', savedLead._id);
+
+    // Step 3: Create history entry for lead creation
     const historyEntry = new LeadHistory({
       leadId: savedLead._id,
       action: 'created',
@@ -70,7 +86,7 @@ router.post('/', auth, async (req, res) => {
         leadSource: leadSource ? 'created' : undefined,
         leadStage: leadStage || 'New'
       },
-      oldValues: {}, // No old values for creation
+      oldValues: {},
       newValues: {
         firstName,
         lastName,
@@ -82,27 +98,9 @@ router.post('/', auth, async (req, res) => {
       userId: req.user.id,
       organizationId: req.user.organizationId
     });
-    
+
     await historyEntry.save();
-    console.log('Lead history entry created'); // Debug log
-
-    // Step 3: Create associated Contact
-// Step 3: Create associated Contact
-const newContact = new Contact({
-  firstName,
-  lastName,
-  email,
-  phone,
-  organizationId: req.user.organizationId, // Same organization
-  createdBy: req.user.id
-});
-
-const savedContact = await newContact.save();
-
-// Step 3b: Update the lead to reference the contact
-savedLead.contactId = savedContact._id;
-await savedLead.save();
-    console.log('Contact created successfully:', savedContact._id); // Debug log
+    console.log('Lead history entry created');
 
     // Step 4: If lead is Qualified, create a Deal
     let createdDeal = null;
