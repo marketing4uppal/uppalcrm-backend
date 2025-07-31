@@ -1,11 +1,11 @@
-// models/Account.js
+// models/Account.js (Fixed - Complete File)
 const mongoose = require('mongoose');
 
 const AccountSchema = new mongoose.Schema({
   // Account identification
   accountNumber: {
     type: String,
-    required: true,
+    required: false,  // Changed to false so pre-save can run first
     unique: true
   },
   accountName: {
@@ -97,7 +97,6 @@ const AccountSchema = new mongoose.Schema({
 });
 
 // Auto-generate account number
-// Auto-generate account number
 AccountSchema.pre('save', async function(next) {
   try {
     if (this.isNew && !this.accountNumber) {
@@ -106,10 +105,17 @@ AccountSchema.pre('save', async function(next) {
       this.accountNumber = `ACC-${this.organizationId.toString().slice(-6).toUpperCase()}-${(count + 1).toString().padStart(4, '0')}`;
       console.log('Generated account number:', this.accountNumber);
     }
+    
+    // Now ensure accountNumber exists (making it effectively required)
+    if (!this.accountNumber) {
+      return next(new Error('Account number is required'));
+    }
+    
     next();
   } catch (error) {
     console.error('Error generating account number:', error);
     next(error);
   }
 });
+
 module.exports = mongoose.model('Account', AccountSchema);
