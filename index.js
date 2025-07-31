@@ -19,6 +19,7 @@ app.use(express.json());
 app.use('/api/leads', leadRoutes);
 app.use('/api/contacts', contactRoutes);
 app.use('/api/deals', require('./routes/deals')); // <<< ADD THIS
+app.use('/api/accounts', require('./routes/accounts'));
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes); // <<< NEW
 app.use('/api/leadhistory', leadHistoryRoutes);
