@@ -5,23 +5,12 @@ const Contact = require('../models/Contact.js');
 const auth = require('../middleware/auth.js');
 
 // GET all contacts for the user's organization
+// GET all contacts for the user's organization
 router.get('/', auth, async (req, res) => {
   try {
     let query = { organizationId: req.user.organizationId };
     
     const contacts = await Contact.find(query)
-      .populate({
-        path: 'leads',
-        match: { organizationId: req.user.organizationId }
-      })
-      .populate({
-        path: 'accounts',
-        match: { organizationId: req.user.organizationId }
-      })
-      .populate({
-        path: 'deals',
-        match: { organizationId: req.user.organizationId }
-      })
       .sort({ createdAt: -1 });
     
     res.status(200).json(contacts);
@@ -30,7 +19,6 @@ router.get('/', auth, async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-
 // GET single contact by ID with all related data
 router.get('/:id', auth, async (req, res) => {
   try {
