@@ -1,29 +1,32 @@
-// routes/deals.js
+// routes/deals.js (Updated with Soft Delete Support)
 const express = require('express');
 const router = express.Router();
 const Deal = require('../models/Deal.js');
-const DealStage = require('../models/DealStage.js');
+const Contact = require('../models/Contact.js');
+const Account = require('../models/Account.js');
 const auth = require('../middleware/auth.js');
 
-// GET all deals for the user's organization
+// GET all deals for the user's organization (UPDATED to handle soft delete)
 router.get('/', auth, async (req, res) => {
   try {
+    const { includeDeleted = false, deletedOnly = false } = req.query;
+    
     let query = { organizationId: req.user.organizationId };
     
-    // Support query by leadId for related records
-    if (req.query.leadId) {
-      query.leadId = req.query.leadId;
-    }
-    
-    // Support query by contactId for related records
-    if (req.query.contactId) {
-      query.contactId = req.query.contactId;
+    // Soft delete filtering
+    if (deletedOnly === 'true') {
+      query.isDeleted = true;
+    } else if (includeDeleted !== 'true') {
+      query.isDeleted = { $ne: true };
     }
     
     const deals = await Deal.find(query)
-      .populate('owner', 'name email')
+      .populate('contactId', 'firstName lastName email phone')
       .populate('leadId', 'firstName lastName email')
-      .populate('contactId', 'firstName lastName email')
+      .populate('accountId', 'accountName serviceType status')
+      .populate('owner', 'firstName lastName email')
+      .populate('createdBy', 'firstName lastName email')
+      .populate('deletedBy', 'firstName lastName email')
       .sort({ createdAt: -1 });
       
     res.status(200).json(deals);
@@ -40,9 +43,12 @@ router.get('/:id', auth, async (req, res) => {
       _id: req.params.id, 
       organizationId: req.user.organizationId 
     })
-    .populate('owner', 'name email')
-    .populate('leadId', 'firstName lastName email leadSource leadStage')
-    .populate('contactId', 'firstName lastName email phone');
+    .populate('contactId', 'firstName lastName email phone')
+    .populate('leadId', 'firstName lastName email')
+    .populate('accountId', 'accountName serviceType status')
+    .populate('owner', 'firstName lastName email')
+    .populate('createdBy', 'firstName lastName email')
+    .populate('deletedBy', 'firstName lastName email');
     
     if (!deal) {
       return res.status(404).json({ message: 'Deal not found' });
@@ -55,56 +61,190 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
+// NEW: GET delete info for a deal
+router.get('/:id/delete-info', auth, async (req, res) => {
+  try {
+    const deal = await Deal.findOne({
+      _id: req.params.id,
+      organizationId: req.user.organizationId,
+      isDeleted: { $ne: true }
+    });
+      
+    if (!deal) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+    
+    // Check dependencies
+    const dependencies = [];
+    
+    // Check if deal has created an account
+    if (deal.accountId) {
+      const account = await Account.findById(deal.accountId);
+      if (account && !account.isDeleted) {
+        dependencies.push({
+          type: 'account',
+          count: 1,
+          message: `Deal has created account: ${account.accountName}`
+        });
+      }
+    }
+    
+    // Check deal validation rules
+    const deletionCheck = deal.canBeDeleted();
+    deletionCheck.dependencies = dependencies;
+    deletionCheck.canDeleteSafely = dependencies.length === 0;
+    
+    res.json({
+      deal: {
+        id: deal._id,
+        name: deal.dealName,
+        stage: deal.stage,
+        amount: deal.amount,
+        closeDate: deal.closeDate,
+        contactName: `${deal.firstName} ${deal.lastName}`
+      },
+      deletionCheck,
+      options: {
+        softDelete: true,
+        hardDelete: false
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching deal delete info:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// NEW: POST soft delete a deal
+router.post('/:id/soft-delete', auth, async (req, res) => {
+  try {
+    const { reason, notes } = req.body;
+    
+    if (!reason) {
+      return res.status(400).json({ error: 'Reason is required' });
+    }
+    
+    const deal = await Deal.findOne({
+      _id: req.params.id,
+      organizationId: req.user.organizationId,
+      isDeleted: { $ne: true }
+    });
+      
+    if (!deal) {
+      return res.status(404).json({ error: 'Deal not found' });
+    }
+    
+    // Check if deal can be deleted
+    const deletionCheck = deal.canBeDeleted();
+    if (!deletionCheck.canDelete) {
+      return res.status(400).json({ 
+        error: 'Deal cannot be deleted', 
+        blockers: deletionCheck.blockers 
+      });
+    }
+    
+    // Soft delete the deal
+    await Deal.findByIdAndUpdate(deal._id, {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: req.user.id,
+      deletionReason: reason,
+      deletionNotes: notes,
+      lastModifiedBy: req.user.id
+    });
+    
+    console.log(`SOFT DELETE: Deal ${deal._id} (${deal.dealName}) deleted by user ${req.user.id}. Reason: ${reason}`);
+    
+    res.json({
+      success: true,
+      message: 'Deal deleted successfully',
+      deal: {
+        id: deal._id,
+        name: deal.dealName,
+        deletedAt: new Date(),
+        reason: reason
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error deleting deal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// NEW: POST restore a deleted deal
+router.post('/:id/restore', auth, async (req, res) => {
+  try {
+    const deal = await Deal.findOne({
+      _id: req.params.id,
+      organizationId: req.user.organizationId,
+      isDeleted: true
+    });
+    
+    if (!deal) {
+      return res.status(404).json({ error: 'Deal not found or not deleted' });
+    }
+    
+    await deal.restore(req.user.id);
+    
+    console.log(`RESTORE: Deal ${deal._id} (${deal.dealName}) restored by user ${req.user.id}`);
+    
+    res.json({
+      success: true,
+      message: 'Deal restored successfully',
+      deal: {
+        id: deal._id,
+        name: deal.dealName,
+        restoredAt: new Date()
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error restoring deal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// NEW: GET deleted deals
+router.get('/deleted', auth, async (req, res) => {
+  try {
+    const deletedDeals = await Deal.find({
+      organizationId: req.user.organizationId,
+      isDeleted: true
+    })
+    .populate('deletedBy', 'firstName lastName email')
+    .sort({ deletedAt: -1 });
+    
+    res.status(200).json(deletedDeals);
+  } catch (error) {
+    console.error('Error fetching deleted deals:', error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // POST create a new deal
 router.post('/', auth, async (req, res) => {
-  const { 
-    firstName, 
-    lastName, 
-    stage, 
-    closeDate, 
-    leadSource, 
-    owner, 
-    amount, 
-    currency, 
-    product, 
-    leadId, 
-    contactId,
-    description,
-    probability 
-  } = req.body;
-  
   try {
     const newDeal = new Deal({
-      firstName,
-      lastName,
-      stage,
-      closeDate,
-      leadSource,
-      owner: owner || req.user.id,
-      amount: amount || 0,
-      currency: currency || 'USD',
-      product,
-      leadId,
-      contactId,
+      ...req.body,
       organizationId: req.user.organizationId,
-      description,
-      probability: probability || 50,
-      createdBy: req.user.id
+      createdBy: req.user.id,
+      owner: req.body.owner || req.user.id,
+      lastModifiedBy: req.user.id
     });
     
     const savedDeal = await newDeal.save();
     
-    // Populate the response
     const populatedDeal = await Deal.findById(savedDeal._id)
-      .populate('owner', 'name email')
+      .populate('contactId', 'firstName lastName email phone')
       .populate('leadId', 'firstName lastName email')
-      .populate('contactId', 'firstName lastName email');
+      .populate('owner', 'firstName lastName email')
+      .populate('createdBy', 'firstName lastName email');
     
     res.status(201).json({
       deal: populatedDeal,
       message: 'Deal created successfully'
     });
-    
   } catch (error) {
     console.error('Error creating deal:', error);
     res.status(400).json({ message: error.message });
@@ -113,42 +253,25 @@ router.post('/', auth, async (req, res) => {
 
 // PUT update a deal
 router.put('/:id', auth, async (req, res) => {
-  const { 
-    firstName, 
-    lastName, 
-    stage, 
-    closeDate, 
-    leadSource, 
-    owner, 
-    amount, 
-    currency, 
-    product,
-    description,
-    probability 
-  } = req.body;
-  
   try {
     const updatedDeal = await Deal.findOneAndUpdate(
-      { _id: req.params.id, organizationId: req.user.organizationId },
       { 
-        firstName, 
-        lastName, 
-        stage, 
-        closeDate, 
-        leadSource, 
-        owner, 
-        amount, 
-        currency, 
-        product,
-        description,
-        probability,
+        _id: req.params.id, 
+        organizationId: req.user.organizationId,
+        isDeleted: { $ne: true }
+      },
+      { 
+        ...req.body,
+        lastModifiedBy: req.user.id,
         lastActivity: new Date()
       },
       { new: true }
     )
-    .populate('owner', 'name email')
+    .populate('contactId', 'firstName lastName email phone')
     .populate('leadId', 'firstName lastName email')
-    .populate('contactId', 'firstName lastName email');
+    .populate('accountId', 'accountName serviceType status')
+    .populate('owner', 'firstName lastName email')
+    .populate('createdBy', 'firstName lastName email');
 
     if (!updatedDeal) {
       return res.status(404).json({ message: 'Deal not found' });
@@ -165,36 +288,32 @@ router.put('/:id', auth, async (req, res) => {
   }
 });
 
-// DELETE a deal
+// DELETE a deal (legacy - now redirects to soft delete)
 router.delete('/:id', auth, async (req, res) => {
   try {
-    const deletedDeal = await Deal.findOneAndDelete({
+    const deal = await Deal.findOne({
       _id: req.params.id,
-      organizationId: req.user.organizationId
+      organizationId: req.user.organizationId,
+      isDeleted: { $ne: true }
     });
 
-    if (!deletedDeal) {
+    if (!deal) {
       return res.status(404).json({ message: 'Deal not found' });
     }
+
+    // Soft delete instead of hard delete
+    await Deal.findByIdAndUpdate(deal._id, {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: req.user.id,
+      deletionReason: 'Legacy Delete',
+      deletionNotes: 'Deleted via legacy DELETE endpoint',
+      lastModifiedBy: req.user.id
+    });
 
     res.status(200).json({ message: 'Deal deleted successfully' });
   } catch (error) {
     console.error('Error deleting deal:', error);
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// GET deal stages for organization
-router.get('/stages/list', auth, async (req, res) => {
-  try {
-    const stages = await DealStage.find({ 
-      organizationId: req.user.organizationId,
-      isActive: true 
-    }).sort({ order: 1 });
-    
-    res.status(200).json(stages);
-  } catch (error) {
-    console.error('Error fetching deal stages:', error);
     res.status(500).json({ message: error.message });
   }
 });

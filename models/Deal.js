@@ -1,20 +1,8 @@
-// models/Deal.js (Updated for Account-Centric Architecture)
+// models/Deal.js (Updated with Soft Delete Support)
 const mongoose = require('mongoose');
 
 const dealSchema = new mongoose.Schema({
-  // Deal identification
-  dealName: {
-    type: String,
-    required: true,
-    trim: true
-  },
-  dealType: {
-    type: String,
-    enum: ['account-setup', 'renewal', 'upgrade', 'downgrade', 'add-on', 'one-time-service', 'cancellation'],
-    default: 'account-setup'
-  },
-  
-  // Contact information (from lead/contact)
+  // Contact information - stored directly in deal for easy access
   firstName: {
     type: String,
     required: true,
@@ -25,45 +13,43 @@ const dealSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  email: {
+    type: String,
+    required: true,
+    trim: true,
+    lowercase: true
+  },
+  phone: {
+    type: String,
+    trim: true
+  },
   
-  // Deal progression
+  // Deal-specific information
+  dealName: {
+    type: String,
+    required: true,
+    trim: true
+  },
   stage: {
     type: String,
-    enum: ['Qualified', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'],
-    default: 'Qualified',
-    required: true
+    enum: ['Prospecting', 'Discovery', 'Proposal', 'Negotiation', 'Closed Won', 'Closed Lost'],
+    default: 'Prospecting'
   },
-  
-  // Financial information
   amount: {
     type: Number,
-    default: 0,
+    required: true,
     min: 0
-  },
-  recurringAmount: {
-    type: Number,
-    default: 0,
-    min: 0
-  },
-  currency: {
-    type: String,
-    enum: ['USD', 'EUR', 'GBP', 'CAD', 'AUD'],
-    default: 'USD'
   },
   probability: {
     type: Number,
     min: 0,
     max: 100,
-    default: 50
+    default: 10
   },
   expectedRevenue: {
     type: Number,
-    default: function() {
-      return this.amount * (this.probability / 100);
-    }
+    default: 0
   },
-  
-  // Timeline
   closeDate: {
     type: Date,
     required: true
@@ -72,12 +58,24 @@ const dealSchema = new mongoose.Schema({
     type: Date
   },
   
-  // Deal details
-  leadSource: {
+  // NEW: Deal type classification
+  dealType: {
     type: String,
-    enum: ['website', 'social-media', 'referral', 'email-campaign', 'cold-call', 'trade-show', 'google-ads', 'linkedin', 'other'],
-    required: true
+    enum: ['account-setup', 'expansion', 'renewal', 'cross-sell', 'upsell'],
+    default: 'account-setup'
   },
+  
+  // For recurring revenue tracking
+  recurringAmount: {
+    type: Number,
+    min: 0
+  },
+  recurringPeriod: {
+    type: String,
+    enum: ['monthly', 'quarterly', 'yearly']
+  },
+  
+  // Product/service information
   product: {
     type: String,
     trim: true
@@ -125,6 +123,38 @@ const dealSchema = new mongoose.Schema({
   lastActivity: {
     type: Date,
     default: Date.now
+  },
+  
+  // NEW: Soft Delete Fields
+  isDeleted: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  deletedAt: {
+    type: Date,
+    default: null
+  },
+  deletedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
+  deletionReason: {
+    type: String,
+    enum: ['Duplicate', 'Invalid', 'Test Data', 'Spam', 'Lost Opportunity', 'Cancelled', 'Other'],
+    default: null
+  },
+  deletionNotes: {
+    type: String,
+    default: null,
+    trim: true
+  },
+  
+  // NEW: Audit fields
+  lastModifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 }, {
   timestamps: true
@@ -139,10 +169,84 @@ dealSchema.index({ owner: 1 });
 dealSchema.index({ closeDate: 1 });
 dealSchema.index({ createdBy: 1 });
 
+// NEW: Soft delete indexes
+dealSchema.index({ isDeleted: 1 });
+dealSchema.index({ organizationId: 1, isDeleted: 1 });
+dealSchema.index({ stage: 1, isDeleted: 1 });
+
 // Virtual for full name
 dealSchema.virtual('fullName').get(function() {
   return `${this.firstName} ${this.lastName}`;
 });
+
+// NEW: Soft Delete Methods
+dealSchema.methods.softDelete = function(userId, reason, notes) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = userId;
+  this.deletionReason = reason;
+  this.deletionNotes = notes;
+  this.lastModifiedBy = userId;
+  return this.save();
+};
+
+dealSchema.methods.restore = function(userId) {
+  this.isDeleted = false;
+  this.deletedAt = null;
+  this.deletedBy = null;
+  this.deletionReason = null;
+  this.deletionNotes = null;
+  this.lastModifiedBy = userId;
+  return this.save();
+};
+
+dealSchema.methods.canBeDeleted = function() {
+  const warnings = [];
+  const blockers = [];
+  
+  // Check if deal is in advanced stages
+  if (this.stage === 'Proposal' || this.stage === 'Negotiation') {
+    warnings.push('Deal is in advanced stage - consider if deletion is appropriate');
+  }
+  
+  if (this.stage === 'Closed Won') {
+    blockers.push('Cannot delete won deals - they are needed for revenue reporting');
+  }
+  
+  // Check if deal has high value
+  if (this.amount > 10000) {
+    warnings.push('Deal has high value - ensure deletion is intentional');
+  }
+  
+  // Check if deal is close to closing
+  if (this.closeDate && this.closeDate <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) {
+    warnings.push('Deal is close to closing date - consider if deletion is appropriate');
+  }
+  
+  // Check if deal has created an account
+  if (this.accountId) {
+    blockers.push('Cannot delete deal - it has created an associated account');
+  }
+  
+  return {
+    canDelete: blockers.length === 0,
+    warnings: warnings,
+    blockers: blockers
+  };
+};
+
+// NEW: Static methods for soft delete
+dealSchema.statics.findActive = function(filter = {}) {
+  return this.find({ ...filter, isDeleted: { $ne: true } });
+};
+
+dealSchema.statics.findDeleted = function(filter = {}) {
+  return this.find({ ...filter, isDeleted: true });
+};
+
+dealSchema.statics.findWithDeleted = function(filter = {}) {
+  return this.find(filter);
+};
 
 // Pre-save middleware to calculate expected revenue
 dealSchema.pre('save', function(next) {
@@ -154,13 +258,13 @@ dealSchema.pre('save', function(next) {
 
 // Post-save middleware: When account-setup deal is won, create account
 dealSchema.post('save', async function(doc) {
-  if (doc.stage === 'Closed Won' && doc.dealType === 'account-setup' && !doc.accountId) {
+  if (doc.stage === 'Closed Won' && doc.dealType === 'account-setup' && !doc.accountId && !doc.isDeleted) {
     const Account = mongoose.model('Account');
     
     try {
       const account = new Account({
         accountName: `${doc.product || 'Service'} - ${doc.firstName} ${doc.lastName}`,
-        serviceType: 'basic', // Default, can be customized
+        serviceType: 'basic',
         status: 'active',
         accountHolderName: `${doc.firstName} ${doc.lastName}`,
         currentMonthlyPrice: doc.recurringAmount || doc.amount,
@@ -173,7 +277,8 @@ dealSchema.post('save', async function(doc) {
         })(),
         contactId: doc.contactId,
         organizationId: doc.organizationId,
-        createdBy: doc.createdBy
+        createdBy: doc.createdBy,
+        lastModifiedBy: doc.lastModifiedBy || doc.createdBy
       });
       
       await account.save();
