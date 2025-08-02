@@ -205,8 +205,17 @@ router.post('/:id/soft-delete', auth, async (req, res) => {
     }
     
     // Soft delete the lead
-    await lead.softDelete(req.user.id, reason, notes);
-    
+    // Soft delete the lead - bypass validation
+await Lead.findByIdAndUpdate(lead._id, {
+  isDeleted: true,
+  deletedAt: new Date(),
+  deletedBy: req.user.id,
+  deletionReason: reason,
+  deletionNotes: notes,
+  lastModifiedBy: req.user.id
+}, { 
+  runValidators: false  // This bypasses validation
+});
     // Create history entry for deletion
     const historyEntry = new LeadHistory({
       leadId: lead._id,
