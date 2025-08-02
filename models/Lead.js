@@ -1,4 +1,4 @@
-// models/Lead.js (Updated for Account-Centric Architecture)
+// models/Lead.js (Updated for Account-Centric Architecture + Soft Delete)
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema(
@@ -91,7 +91,7 @@ const LeadSchema = new mongoose.Schema(
       trim: true
     },
     
-    // UPDATED: Now references contact instead of being referenced by contact
+    // References
     contactId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Contact',
@@ -129,12 +129,44 @@ const LeadSchema = new mongoose.Schema(
     conversionNotes: {
       type: String,
       trim: true
+    },
+    
+    // NEW: Soft Delete Fields
+    isDeleted: {
+      type: Boolean,
+      default: false,
+      index: true // Index for better query performance
+    },
+    deletedAt: {
+      type: Date,
+      default: null
+    },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    },
+    deletionReason: {
+      type: String,
+      enum: ['Duplicate', 'Invalid', 'Test Data', 'Spam', 'Request Removal', 'Converted', 'Lost', 'Other'],
+      default: null
+    },
+    deletionNotes: {
+      type: String,
+      default: null,
+      trim: true
+    },
+    
+    // NEW: Audit fields (you might want to add lastModifiedBy to your existing schema)
+    lastModifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     }
   },
   { timestamps: true }
 );
 
-// Indexes for better performance
+// Existing indexes
 LeadSchema.index({ organizationId: 1, leadStage: 1 });
 LeadSchema.index({ contactId: 1 });
 LeadSchema.index({ assignedTo: 1 });
@@ -142,6 +174,13 @@ LeadSchema.index({ createdBy: 1 });
 LeadSchema.index({ leadSource: 1 });
 LeadSchema.index({ score: -1 });
 LeadSchema.index({ nextFollowUpDate: 1 });
+
+// NEW: Soft delete indexes
+LeadSchema.index({ isDeleted: 1 });
+LeadSchema.index({ organizationId: 1, isDeleted: 1 });
+LeadSchema.index({ email: 1, isDeleted: 1 });
+LeadSchema.index({ leadStage: 1, isDeleted: 1 });
+LeadSchema.index({ createdAt: -1, isDeleted: 1 });
 
 // Virtual for full name
 LeadSchema.virtual('fullName').get(function() {
@@ -155,8 +194,100 @@ LeadSchema.virtual('deals', {
   foreignField: 'leadId'
 });
 
-// Pre-save middleware for lead scoring
+// NEW: Soft Delete Methods
+LeadSchema.methods.softDelete = function(userId, reason, notes) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = userId;
+  this.deletionReason = reason;
+  this.deletionNotes = notes;
+  this.lastModifiedBy = userId;
+  return this.save();
+};
+
+LeadSchema.methods.restore = function(userId) {
+  this.isDeleted = false;
+  this.deletedAt = null;
+  this.deletedBy = null;
+  this.deletionReason = null;
+  this.deletionNotes = null;
+  this.lastModifiedBy = userId;
+  return this.save();
+};
+
+LeadSchema.methods.canBeDeleted = function() {
+  const warnings = [];
+  const blockers = [];
+  
+  // Check if lead is in advanced stage
+  if (this.leadStage === 'Qualified') {
+    warnings.push('Lead is qualified - consider converting to deal instead');
+  }
+  
+  if (this.leadStage === 'Won') {
+    blockers.push('Cannot delete won leads - they should remain for reporting');
+  }
+  
+  // Check if lead has high score
+  if (this.score > 70) {
+    warnings.push('Lead has high score - may be valuable');
+  }
+  
+  // Check if lead has been converted
+  if (this.convertedDate) {
+    blockers.push('Cannot delete converted leads - they are linked to accounts/deals');
+  }
+  
+  // Check if lead has upcoming follow-up
+  if (this.nextFollowUpDate && this.nextFollowUpDate > new Date()) {
+    warnings.push('Lead has scheduled follow-up - consider rescheduling');
+  }
+  
+  // Check budget value
+  if (['1000-5000', '5000+'].includes(this.budget)) {
+    warnings.push('Lead has high budget potential');
+  }
+  
+  // Check timeline urgency
+  if (['immediate', '1-month'].includes(this.timeline)) {
+    warnings.push('Lead has urgent timeline');
+  }
+  
+  return {
+    canDelete: blockers.length === 0,
+    warnings: warnings,
+    blockers: blockers
+  };
+};
+
+// NEW: Static methods for soft delete
+LeadSchema.statics.findActive = function(filter = {}) {
+  return this.find({ ...filter, isDeleted: false });
+};
+
+LeadSchema.statics.findDeleted = function(filter = {}) {
+  return this.find({ ...filter, isDeleted: true });
+};
+
+LeadSchema.statics.findAll = function(filter = {}) {
+  return this.find(filter);
+};
+
+// NEW: Pre-find middleware to exclude deleted items by default
+LeadSchema.pre(/^find/, function() {
+  // Only apply filter if isDeleted is not explicitly set in the query
+  if (!this.getQuery().hasOwnProperty('isDeleted')) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+});
+
+// Pre-save middleware for lead scoring (your existing logic)
 LeadSchema.pre('save', function(next) {
+  // Skip scoring if lead is being deleted
+  if (this.isDeleted) {
+    return next();
+  }
+  
   let score = 0;
   
   // Score based on lead source
