@@ -172,38 +172,59 @@ router.post('/:id/soft-delete', auth, async (req, res) => {
     }
     
     // Handle contact based on user choice
-    let contactActionResult = null;
-    if (lead.contactId && contactAction) {
-      switch (contactAction) {
-        case 'delete':
-          // Add note to contact about lead deletion
-          const contactNotes = (lead.contactId.notes || '') + 
-            `\n[${new Date().toISOString()}] Associated lead deleted. Reason: ${reason}`;
-          await Contact.findByIdAndUpdate(lead.contactId._id, { notes: contactNotes });
-          contactActionResult = 'marked';
-          break;
-          
-        case 'keep':
-          // Add note to contact about lead deletion
-          const keepNotes = (lead.contactId.notes || '') + 
-            `\n[${new Date().toISOString()}] Associated lead was deleted but contact preserved. Reason: ${reason}`;
-          await Contact.findByIdAndUpdate(lead.contactId._id, { notes: keepNotes });
-          contactActionResult = 'kept';
-          break;
-          
-        case 'convert':
-          // Convert to standalone contact
-          const convertNotes = (lead.contactId.notes || '') + 
-            `\n[${new Date().toISOString()}] Converted to standalone contact. Original lead deleted.`;
-          await Contact.findByIdAndUpdate(lead.contactId._id, { notes: convertNotes });
-          contactActionResult = 'converted';
-          break;
-          
-        default:
-          contactActionResult = 'no_action';
-      }
-    }
-    
+    // Fix for routes/leads.js - Update the contactAction switch statement
+
+// Handle contact based on user choice
+let contactActionResult = null;
+if (lead.contactId && contactAction) {
+  switch (contactAction) {
+    case 'delete':
+      // FIXED: Actually soft-delete the contact
+      const contactNotes = (lead.contactId.notes || '') + 
+        `\n[${new Date().toISOString()}] Associated lead deleted. Contact also deleted. Reason: ${reason}`;
+      
+      // Soft delete the contact
+      await Contact.findByIdAndUpdate(lead.contactId._id, {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deletedBy: req.user.id,
+        deletionReason: `Associated lead deleted: ${reason}`,
+        deletionNotes: `Lead ${lead.fullName} was deleted and contact was also deleted as requested.`,
+        notes: contactNotes,
+        lastModifiedBy: req.user.id
+      });
+      
+      contactActionResult = 'deleted';
+      break;
+      
+    case 'keep':
+      // Add note to contact about lead deletion
+      const keepNotes = (lead.contactId.notes || '') + 
+        `\n[${new Date().toISOString()}] Associated lead was deleted but contact preserved. Reason: ${reason}`;
+      await Contact.findByIdAndUpdate(lead.contactId._id, { 
+        notes: keepNotes,
+        lastModifiedBy: req.user.id 
+      });
+      contactActionResult = 'kept';
+      break;
+      
+    case 'convert':
+      // Convert to standalone contact
+      const convertNotes = (lead.contactId.notes || '') + 
+        `\n[${new Date().toISOString()}] Converted to standalone contact. Original lead deleted.`;
+      await Contact.findByIdAndUpdate(lead.contactId._id, { 
+        notes: convertNotes,
+        lastModifiedBy: req.user.id,
+        // Remove any lead references if they exist
+        leadId: null
+      });
+      contactActionResult = 'converted';
+      break;
+      
+    default:
+      contactActionResult = 'no_action';
+  }
+}
     // Soft delete the lead
     // Soft delete the lead - bypass validation
 await Lead.findByIdAndUpdate(lead._id, {
