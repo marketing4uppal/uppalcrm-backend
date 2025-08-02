@@ -7,11 +7,12 @@ const LeadHistorySchema = new mongoose.Schema({
     ref: 'Lead',
     required: true
   },
-  action: {
-    type: String,
-    enum: ['created', 'updated', 'status_changed', 'assigned'],
-    required: true
-  },
+  // In models/LeadHistory.js - find the action field and update it:
+action: {
+  type: String,
+  enum: ['created', 'updated', 'status_changed', 'deleted', 'restored'], // ADD 'deleted' and 'restored'
+  required: true
+},
   changes: {
     type: Object, // Store what fields changed
     default: {}
