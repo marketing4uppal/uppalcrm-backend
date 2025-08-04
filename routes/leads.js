@@ -1,4 +1,4 @@
-// routes/leads.js (Updated with Auto Deal Creation + Soft Delete)
+// routes/leads.js (Updated with Auto Deal Creation + Soft Delete + Optional Email)
 const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead.js');
@@ -338,18 +338,26 @@ router.get('/deleted', auth, async (req, res) => {
 });
 
 // POST a new lead for the user's organization (with automatic contact creation and history tracking)
+// UPDATED: Made email optional, require at least email OR phone
 router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   
-  console.log('Creating lead with data:', { firstName, lastName, email });
+  console.log('Creating lead with data:', { firstName, lastName, email, phone });
   
   try {
+    // NEW: Validate that we have at least email OR phone for contact purposes
+    if (!email && !phone) {
+      return res.status(400).json({ 
+        message: 'Either email or phone number is required for contact purposes' 
+      });
+    }
+
     // Step 1: Create the Contact first (since Lead now requires contactId)
     const newContact = new Contact({
       firstName,
       lastName,
-      email,
-      phone,
+      email: email || '', // Allow empty email
+      phone: phone || '', // Allow empty phone
       organizationId: req.user.organizationId,
       createdBy: req.user.id
     });
@@ -361,8 +369,8 @@ router.post('/', auth, async (req, res) => {
     const newLead = new Lead({
       firstName,
       lastName,
-      email,
-      phone,
+      email: email || '', // Allow empty email
+      phone: phone || '', // Allow empty phone
       leadSource,
       leadStage,
       contactId: savedContact._id,
@@ -380,7 +388,7 @@ router.post('/', auth, async (req, res) => {
       changes: {
         firstName: 'created',
         lastName: 'created',
-        email: 'created',
+        email: email ? 'created' : undefined, // Only log if email provided
         phone: phone ? 'created' : undefined,
         leadSource: leadSource ? 'created' : undefined,
         leadStage: leadStage || 'New'
@@ -389,7 +397,7 @@ router.post('/', auth, async (req, res) => {
       newValues: {
         firstName,
         lastName,
-        email,
+        email: email || null,
         phone: phone || null,
         leadSource: leadSource || null,
         leadStage: leadStage || 'New'
@@ -457,10 +465,18 @@ router.post('/', auth, async (req, res) => {
 });
 
 // PUT update a lead (with history tracking and deal creation)
+// UPDATED: Handle optional email updates
 router.put('/:id', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   
   try {
+    // NEW: Validate that we have at least email OR phone for contact purposes
+    if (!email && !phone) {
+      return res.status(400).json({ 
+        message: 'Either email or phone number is required for contact purposes' 
+      });
+    }
+
     // Step 1: Get the current lead to compare changes
     const currentLead = await Lead.findOne({ 
       _id: req.params.id, 
@@ -477,8 +493,8 @@ router.put('/:id', auth, async (req, res) => {
       { 
         firstName, 
         lastName, 
-        email, 
-        phone, 
+        email: email || '', // Allow empty email
+        phone: phone || '', // Allow empty phone
         leadSource, 
         leadStage,
         lastModifiedBy: req.user.id  // NEW: Track who modified
@@ -501,15 +517,15 @@ router.put('/:id', auth, async (req, res) => {
       oldValues.lastName = currentLead.lastName;
       newValues.lastName = lastName;
     }
-    if (currentLead.email !== email) {
+    if (currentLead.email !== (email || '')) {
       changes.email = 'updated';
       oldValues.email = currentLead.email;
-      newValues.email = email;
+      newValues.email = email || '';
     }
-    if (currentLead.phone !== phone) {
+    if (currentLead.phone !== (phone || '')) {
       changes.phone = 'updated';
       oldValues.phone = currentLead.phone;
-      newValues.phone = phone;
+      newValues.phone = phone || '';
     }
     if (currentLead.leadSource !== leadSource) {
       changes.leadSource = 'updated';
