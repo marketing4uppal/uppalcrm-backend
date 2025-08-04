@@ -206,6 +206,7 @@ router.get('/:id/delete-info', auth, async (req, res) => {
     
     const relatedDeals = await Deal.find({ 
       contactId: contact._id,
+      isDeleted: { $ne: true },
       organizationId: req.user.organizationId 
     });
     
