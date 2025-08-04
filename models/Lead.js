@@ -36,7 +36,7 @@ const LeadSchema = new mongoose.Schema(
     // Lead-specific information
     leadSource: { 
       type: String, 
-      enum: ['website', 'social-media', 'referral', 'email-campaign', 'cold-call', 'trade-show', 'google-ads', 'linkedin', 'other'],
+      enum: ['website', 'social-media', 'referral', 'email-campaign', 'cold-call', 'trade-show', 'google-ads', 'linkedin', 'other', ''],
       default: "other"
     },
     leadStage: { 
