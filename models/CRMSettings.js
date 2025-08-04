@@ -82,7 +82,7 @@ CRMSettingsSchema.index({ organizationId: 1 });
 CRMSettingsSchema.statics.getDefaultSettings = function() {
   return {
     leadFields: [
-      { id: 1, name: 'firstName', label: 'First Name', type: 'text', required: true, active: true },
+      { id: 1, name: 'firstName', label: 'First Name', type: 'text', required: false, active: true }, // Changed to optional
       { id: 2, name: 'lastName', label: 'Last Name', type: 'text', required: true, active: true },
       { id: 3, name: 'email', label: 'Email', type: 'email', required: false, active: true },
       { id: 4, name: 'phone', label: 'Phone', type: 'tel', required: false, active: true },
@@ -139,22 +139,22 @@ CRMSettingsSchema.methods.validateFieldConfig = function() {
   const errors = [];
   
   // Ensure required fields are present and active
-  const requiredFields = ['firstName', 'lastName'];
+  const requiredFields = ['lastName']; // Only Last Name is required now
   const activeRequiredFields = this.leadFields.filter(field => 
     requiredFields.includes(field.name) && field.active
   );
   
   if (activeRequiredFields.length !== requiredFields.length) {
-    errors.push('First Name and Last Name fields must be active');
+    errors.push('Last Name field must be active');
   }
   
-  // Ensure at least email or phone is active
+  // Ensure at least email or phone is active for contact purposes
   const contactFields = this.leadFields.filter(field => 
     ['email', 'phone'].includes(field.name) && field.active
   );
   
   if (contactFields.length === 0) {
-    errors.push('At least Email or Phone field must be active');
+    errors.push('At least Email or Phone field must be active for contact purposes');
   }
   
   return errors;

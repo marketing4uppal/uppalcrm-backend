@@ -1,28 +1,38 @@
-// models/Contact.js (Updated with Soft Delete Support)
+// models/Contact.js (Updated - firstName Optional)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
-    firstName: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    lastName: {
-      type: String,
-      required: true,
-      trim: true
-    },
-    email: {
-      type: String,
-      required: false,
+    firstName: { 
+      type: String, 
+      required: false,  // CHANGED: Made optional
       trim: true,
-      lowercase: true
+      min: 2,
+      max: 50,
+      default: ""  // ADDED: Default empty string
     },
-    phone: {
+    lastName: { 
+      type: String, 
+      required: true,  // Keep required for identification
+      trim: true,
+      min: 2,
+      max: 50
+    },
+    email: { 
+      type: String, 
+      required: false,  // Already optional from previous changes
+      trim: true,
+      lowercase: true,
+      max: 100,
+      default: ""  // ADDED: Default empty string
+    },
+    phone: { 
       type: String,
-      trim: true
+      trim: true,
+      default: ""
     },
+    
+    // Additional contact fields
     company: {
       type: String,
       trim: true
@@ -32,51 +42,46 @@ const ContactSchema = new mongoose.Schema(
       trim: true
     },
     address: {
-      street: String,
-      city: String,
-      state: String,
-      zipCode: String,
-      country: String
+      street: { type: String, trim: true },
+      city: { type: String, trim: true },
+      state: { type: String, trim: true },
+      zipCode: { type: String, trim: true },
+      country: { type: String, trim: true }
     },
-    linkedin: {
-      type: String,
-      trim: true
-    },
-    website: {
-      type: String,
-      trim: true
-    },
-    notes: {
-      type: String,
-      trim: true
-    },
-    tags: [{
-      type: String,
-      trim: true
-    }],
-    isActive: {
-      type: Boolean,
-      default: true
-    },
-    lastContactedDate: {
-      type: Date
-    },
+    
+    // Social/Web presence
+    linkedin: { type: String, trim: true },
+    website: { type: String, trim: true },
+    
+    // Notes and tags
+    notes: { type: String, trim: true },
+    tags: [{ type: String, trim: true }],
+    
+    // Status
+    isActive: { type: Boolean, default: true },
+    
+    // Organization relationship
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: true
+      required: true,
     },
+    
+    // Tracking
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: true
     },
+    lastContactedDate: {
+      type: Date
+    },
     
-    // NEW: Soft Delete Fields
+    // Soft delete fields (if needed)
     isDeleted: {
       type: Boolean,
       default: false,
-      index: true // Index for better query performance
+      index: true
     },
     deletedAt: {
       type: Date,
@@ -89,7 +94,6 @@ const ContactSchema = new mongoose.Schema(
     },
     deletionReason: {
       type: String,
-      enum: ['Duplicate', 'Invalid', 'Test Data', 'Spam', 'Request Removal', 'Associated Lead Deleted', 'Other'],
       default: null
     },
     deletionNotes: {
@@ -97,8 +101,6 @@ const ContactSchema = new mongoose.Schema(
       default: null,
       trim: true
     },
-    
-    // NEW: Audit fields
     lastModifiedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
@@ -107,98 +109,64 @@ const ContactSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Existing indexes
-ContactSchema.index({ organizationId: 1, email: 1 }, { unique: true });
-ContactSchema.index({ organizationId: 1, company: 1 });
+// Indexes for performance
+ContactSchema.index({ organizationId: 1, email: 1 });
 ContactSchema.index({ organizationId: 1, lastName: 1, firstName: 1 });
-
-// NEW: Soft delete indexes
+ContactSchema.index({ organizationId: 1, company: 1 });
+ContactSchema.index({ createdBy: 1 });
 ContactSchema.index({ isDeleted: 1 });
 ContactSchema.index({ organizationId: 1, isDeleted: 1 });
-ContactSchema.index({ email: 1, isDeleted: 1 });
 
-// Virtual for full name
+// UPDATED: Virtual for full name - handles optional firstName
 ContactSchema.virtual('fullName').get(function() {
-  return `${this.firstName} ${this.lastName}`;
+  const firstName = this.firstName || '';
+  const lastName = this.lastName || '';
+  return `${firstName} ${lastName}`.trim() || 'Unknown';
 });
 
-// Virtual to get related leads
+// Virtual to get all leads for this contact
 ContactSchema.virtual('leads', {
   ref: 'Lead',
   localField: '_id',
   foreignField: 'contactId'
 });
 
-// Virtual to get related accounts
+// Virtual to get all accounts for this contact
 ContactSchema.virtual('accounts', {
   ref: 'Account',
   localField: '_id',
   foreignField: 'contactId'
 });
 
-// Virtual to get related deals
+// Virtual to get all deals for this contact
 ContactSchema.virtual('deals', {
   ref: 'Deal',
   localField: '_id',
   foreignField: 'contactId'
 });
 
-// NEW: Soft Delete Methods
-ContactSchema.methods.softDelete = function(userId, reason, notes) {
-  this.isDeleted = true;
-  this.deletedAt = new Date();
-  this.deletedBy = userId;
-  this.deletionReason = reason;
-  this.deletionNotes = notes;
-  this.lastModifiedBy = userId;
-  return this.save();
-};
-
-ContactSchema.methods.restore = function(userId) {
-  this.isDeleted = false;
-  this.deletedAt = null;
-  this.deletedBy = null;
-  this.deletionReason = null;
-  this.deletionNotes = null;
-  this.lastModifiedBy = userId;
-  return this.save();
-};
-
-ContactSchema.methods.canBeDeleted = function() {
-  const warnings = [];
-  const blockers = [];
-  
-  // Check if contact has active relationships
-  // Note: You would need to check actual related records here
-  // This is a placeholder for the logic
-  
-  return {
-    canDelete: blockers.length === 0,
-    warnings: warnings,
-    blockers: blockers
-  };
-};
-
-// NEW: Static methods for soft delete
-ContactSchema.statics.findActive = function(filter = {}) {
-  return this.find({ ...filter, isDeleted: { $ne: true } });
-};
-
-ContactSchema.statics.findDeleted = function(filter = {}) {
-  return this.find({ ...filter, isDeleted: true });
-};
-
-ContactSchema.statics.findWithDeleted = function(filter = {}) {
-  return this.find(filter);
-};
-
-// Pre-save middleware to set lastModifiedBy
-ContactSchema.pre('save', function(next) {
-  if (this.isModified() && !this.isNew) {
-    // lastModifiedBy should be set manually in the route handlers
+// UPDATED: Pre-validation middleware to handle optional firstName
+ContactSchema.pre('validate', function(next) {
+  // Ensure we have lastName for identification
+  if (!this.lastName || this.lastName.trim() === '') {
+    const error = new Error('Last Name is required for contact identification');
+    error.path = 'lastName';
+    return next(error);
   }
+  
+  // Ensure we have at least email OR phone for contact purposes
+  if ((!this.email || this.email.trim() === '') && (!this.phone || this.phone.trim() === '')) {
+    const error = new Error('Either email or phone is required for contact purposes');
+    error.path = 'contact';
+    return next(error);
+  }
+  
   next();
 });
 
-// Export the model
-module.exports = mongoose.model('Contact', ContactSchema);
+// Enable virtual fields in JSON output
+ContactSchema.set('toJSON', { virtuals: true });
+ContactSchema.set('toObject', { virtuals: true });
+
+const Contact = mongoose.model('Contact', ContactSchema);
+module.exports = Contact;
