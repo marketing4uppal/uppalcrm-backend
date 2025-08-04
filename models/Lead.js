@@ -21,7 +21,7 @@ const LeadSchema = new mongoose.Schema(
     },
     email: { 
       type: String, 
-      required: true, 
+      required: false, 
       max: 100,
       trim: true,
       lowercase: true
