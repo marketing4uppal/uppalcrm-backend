@@ -273,12 +273,12 @@ LeadSchema.pre('validate', function(next) {
     return next(error);
   }
   
-  // Ensure we have at least email OR phone for contact purposes
-  if ((!this.email || this.email.trim() === '') && (!this.phone || this.phone.trim() === '')) {
-    const error = new Error('Either email or phone is required for contact purposes');
-    error.path = 'contact';
-    return next(error);
-  }
+ // COMMENTED OUT - allowing leads/contacts with no email or phone
+// if ((!this.email || this.email.trim() === '') && (!this.phone || this.phone.trim() === '')) {
+//   const error = new Error('Either email or phone is required for contact purposes');
+//   error.path = 'contact';
+//   return next(error);
+// }
   
   next();
 });
