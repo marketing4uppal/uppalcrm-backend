@@ -329,14 +329,15 @@ router.post('/', auth, async (req, res) => {
   
   try {
     // Step 1: Create the Contact first (since Lead requires contactId)
-    const newContact = new Contact({
-      firstName: firstName || '',  // Allow empty firstName
-      lastName,                    // Required field
-      email: email || '',          // Allow empty email
-      phone: phone || '',          // Allow empty phone
-      organizationId: req.user.organizationId,
-      createdBy: req.user.id
-    });
+    // Step 1: Create the Contact first (since Lead now requires contactId)
+const newContact = new Contact({
+  firstName,
+  lastName,
+  email: email || undefined,  // Only set if provided
+  phone,
+  organizationId: req.user.organizationId,
+  createdBy: req.user.id
+});
 
     const savedContact = await newContact.save();
     console.log('✅ PROPER: Contact created successfully:', savedContact._id);
@@ -432,13 +433,14 @@ router.post('/', auth, async (req, res) => {
   } catch (error) {
     console.error('✅ PROPER: Error in lead creation:', error);
     
-    if (error.code === 11000) {
-      if (error.keyPattern?.email) {
-        return res.status(400).json({ 
-          message: 'A lead or contact with this email already exists' 
-        });
-      }
-    }
+   // In the POST route, modify the duplicate check
+if (error.code === 11000) {
+  if (error.keyPattern?.email && email) {  // Only check if email is provided
+    return res.status(400).json({ 
+      message: 'A lead or contact with this email already exists' 
+    });
+  }
+}
     
     res.status(400).json({ message: error.message });
   }
