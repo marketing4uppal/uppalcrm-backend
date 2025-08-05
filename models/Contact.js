@@ -1,53 +1,51 @@
-// models/Contact.js (Fix Email Uniqueness Issue)
+// models/Contact.js (Updated for Account-Centric Architecture)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
     firstName: { 
       type: String, 
-      required: false,  // ✅ Not required
+      required: false,  // ← CHANGED: Made optional
       trim: true,
-      min: 1,
+      min: 2,
       max: 50
     },
     lastName: { 
       type: String, 
-      required: true,   // ✅ Still required
+      required: true,
       trim: true,
-      min: 1,
+      min: 2,
       max: 50
     },
     email: { 
-  type: String, 
-  required: false,  // Make it optional
-  trim: true,
-  lowercase: true,
-  max: 100,
-  default: null,    // Default to null
-  validate: {
-    validator: function(v) {
-      // If email is provided, it must be valid
-      if (v === null || v === undefined || v === '') return true;
-      return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+      type: String, 
+      required: false,  // ← CHANGED: Made optional
+      trim: true,
+      lowercase: true,
+      max: 100,
+      default: null,    // ← ADDED: Default to null
+      validate: {
+        validator: function(v) {
+          // If email is provided, it must be valid
+          if (v === null || v === undefined || v === '') return true;
+          return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+        },
+        message: 'Please enter a valid email'
+      }
+      // Removed unique constraint to allow same contact for multiple leads
     },
-    message: 'Please enter a valid email'
-  }
-},
     phone: { 
       type: String,
-      required: false,  // ✅ Not required
       trim: true
     },
     
     // Additional contact fields
     company: {
       type: String,
-      required: false,
       trim: true
     },
     jobTitle: {
       type: String,
-      required: false,
       trim: true
     },
     address: {
@@ -89,26 +87,21 @@ const ContactSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ✅ FIX: Pre-save middleware to handle empty emails
-ContactSchema.pre('save', function(next) {
-  // Convert empty email strings to undefined so they don't conflict with uniqueness
-  if (this.email === '') {
-    this.email = undefined;
+// Indexes for performance - UPDATED to handle null emails
+ContactSchema.index(
+  { organizationId: 1, email: 1 }, 
+  { 
+    partialFilterExpression: { email: { $ne: null } },  // Only index non-null emails
+    sparse: true 
   }
-  next();
-});
-
-// Indexes for performance
-ContactSchema.index({ organizationId: 1, email: 1 });
+);
 ContactSchema.index({ organizationId: 1, lastName: 1, firstName: 1 });
 ContactSchema.index({ organizationId: 1, company: 1 });
 ContactSchema.index({ createdBy: 1 });
 
 // Virtual for full name
 ContactSchema.virtual('fullName').get(function() {
-  const firstName = this.firstName || '';
-  const lastName = this.lastName || '';
-  return `${firstName} ${lastName}`.trim();
+  return `${this.firstName || ''} ${this.lastName}`.trim();
 });
 
 // Virtual to get all leads for this contact

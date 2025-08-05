@@ -1,4 +1,4 @@
-// models/Lead.js (Fix Email Uniqueness Issue)
+// models/Lead.js (Updated for Account-Centric Architecture + Soft Delete)
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema(
@@ -6,37 +6,37 @@ const LeadSchema = new mongoose.Schema(
     // Lead inquiry details
     firstName: { 
       type: String, 
-      required: false,  // ✅ Not required
-      min: 1,
+      required: false,  // ← CHANGED: Made optional
+      min: 2, 
       max: 50,
       trim: true
     },
     lastName: { 
       type: String, 
-      required: true,   // ✅ Still required
-      min: 1,
+      required: true, 
+      min: 2, 
       max: 50,
       trim: true
     },
     email: { 
-  type: String, 
-  required: false,  // Make it optional
-  max: 100,
-  trim: true,
-  lowercase: true,
-  default: null,    // Default to null
-  validate: {
-    validator: function(v) {
-      // If email is provided, it must be valid
-      if (v === null || v === undefined || v === '') return true;
-      return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+      type: String, 
+      required: false,  // ← CHANGED: Made optional
+      max: 100,
+      trim: true,
+      lowercase: true,
+      default: null,    // ← ADDED: Default to null
+      validate: {
+        validator: function(v) {
+          // If email is provided, it must be valid
+          if (v === null || v === undefined || v === '') return true;
+          return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
+        },
+        message: 'Please enter a valid email'
+      }
+      // Removed unique constraint - same person can have multiple leads
     },
-    message: 'Please enter a valid email'
-  }
-},
     phone: { 
       type: String, 
-      required: false,  // ✅ Not required
       default: "",
       trim: true
     },
@@ -56,12 +56,10 @@ const LeadSchema = new mongoose.Schema(
     // Lead details
     company: {
       type: String,
-      required: false,
       trim: true
     },
     jobTitle: {
       type: String,
-      required: false,
       trim: true
     },
     inquiryType: {
@@ -111,10 +109,10 @@ const LeadSchema = new mongoose.Schema(
     organizationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Organization',
-      required: true
+      required: true,
     },
     
-    // Assignment and ownership
+    // Assignment and tracking
     assignedTo: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User'
@@ -124,83 +122,117 @@ const LeadSchema = new mongoose.Schema(
       ref: 'User',
       required: true
     },
-    lastModifiedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+    
+    // Activity tracking
+    lastContactedDate: {
+      type: Date
+    },
+    nextFollowUpDate: {
+      type: Date
     },
     
-    // Soft delete support
+    // Lead conversion
+    convertedDate: {
+      type: Date
+    },
+    conversionNotes: {
+      type: String,
+      trim: true
+    },
+    
+    // NEW: Soft Delete Fields
     isDeleted: {
       type: Boolean,
-      default: false
+      default: false,
+      index: true // Index for better query performance
     },
     deletedAt: {
-      type: Date
+      type: Date,
+      default: null
     },
     deletedBy: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
+      ref: 'User',
+      default: null
     },
     deletionReason: {
       type: String,
-      trim: true
+      enum: ['Duplicate', 'Invalid', 'Test Data', 'Spam', 'Request Removal', 'Converted', 'Lost', 'Other'],
+      default: null
     },
     deletionNotes: {
       type: String,
+      default: null,
       trim: true
+    },
+    
+    // NEW: Audit fields
+    lastModifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User'
     }
   },
   { timestamps: true }
 );
 
-// ✅ FIX: Pre-save middleware to handle empty emails
-LeadSchema.pre('save', function(next) {
-  // Convert empty email strings to undefined so they don't conflict with uniqueness
-  if (this.email === '') {
-    this.email = undefined;
-  }
-  next();
-});
-
-// Indexes for performance
+// Existing indexes
 LeadSchema.index({ organizationId: 1, leadStage: 1 });
-LeadSchema.index({ organizationId: 1, leadSource: 1 });
-LeadSchema.index({ organizationId: 1, email: 1 });
-LeadSchema.index({ organizationId: 1, isDeleted: 1 });
 LeadSchema.index({ contactId: 1 });
 LeadSchema.index({ assignedTo: 1 });
 LeadSchema.index({ createdBy: 1 });
+LeadSchema.index({ leadSource: 1 });
+LeadSchema.index({ score: -1 });
+LeadSchema.index({ nextFollowUpDate: 1 });
+
+// NEW: Soft delete indexes
+LeadSchema.index({ isDeleted: 1 });
+LeadSchema.index({ organizationId: 1, isDeleted: 1 });
+LeadSchema.index({ leadStage: 1, isDeleted: 1 });
+LeadSchema.index({ createdAt: -1, isDeleted: 1 });
+
+// Email index - UPDATED to handle null emails
+LeadSchema.index(
+  { email: 1, isDeleted: 1 }, 
+  { 
+    partialFilterExpression: { email: { $ne: null } },  // Only index non-null emails
+    sparse: true 
+  }
+);
 
 // Virtual for full name
 LeadSchema.virtual('fullName').get(function() {
-  const firstName = this.firstName || '';
-  const lastName = this.lastName || '';
-  return `${firstName} ${lastName}`.trim();
+  return `${this.firstName || ''} ${this.lastName}`.trim();
 });
 
-// Method to check if lead can be deleted
-LeadSchema.methods.canBeDeleted = function() {
-  // Add your business logic here
-  return {
-    canDelete: true,
-    blockers: []
-  };
-};
-
-// Method to restore a soft-deleted lead
-LeadSchema.methods.restore = function(userId) {
-  this.isDeleted = false;
-  this.deletedAt = undefined;
-  this.deletedBy = undefined;
-  this.deletionReason = undefined;
-  this.deletionNotes = undefined;
+// NEW: Soft delete methods
+LeadSchema.methods.softDelete = function(userId, reason, notes) {
+  this.isDeleted = true;
+  this.deletedAt = new Date();
+  this.deletedBy = userId;
+  this.deletionReason = reason;
+  this.deletionNotes = notes;
   this.lastModifiedBy = userId;
   return this.save();
 };
 
-// Enable virtual fields in JSON output
-LeadSchema.set('toJSON', { virtuals: true });
-LeadSchema.set('toObject', { virtuals: true });
+LeadSchema.methods.restore = function(userId) {
+  this.isDeleted = false;
+  this.deletedAt = null;
+  this.deletedBy = null;
+  this.deletionReason = null;
+  this.deletionNotes = null;
+  this.lastModifiedBy = userId;
+  return this.save();
+};
+
+// Query helpers for soft delete
+LeadSchema.query.notDeleted = function() {
+  return this.where({ isDeleted: { $ne: true } });
+};
+
+LeadSchema.query.onlyDeleted = function() {
+  return this.where({ isDeleted: true });
+};
 
 const Lead = mongoose.model('Lead', LeadSchema);
 module.exports = Lead;
