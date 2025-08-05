@@ -453,7 +453,7 @@ router.post('/', auth, async (req, res) => {
     
     // Handle duplicate email check - only if email was provided
     if (error.code === 11000) {
-      if (error.keyPattern?.email && cleanEmail) {
+      if (error.keyPattern?.email && email) {
         return res.status(400).json({ 
           message: 'A lead or contact with this email already exists' 
         });
