@@ -7,7 +7,6 @@ const LeadSchema = new mongoose.Schema(
     firstName: { 
       type: String, 
       required: false,  // ← CHANGED: Made optional
-      min: 2, 
       max: 50,
       trim: true
     },

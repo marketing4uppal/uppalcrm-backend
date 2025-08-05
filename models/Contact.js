@@ -7,7 +7,6 @@ const ContactSchema = new mongoose.Schema(
       type: String, 
       required: false,  // ← CHANGED: Made optional
       trim: true,
-      min: 2,
       max: 50
     },
     lastName: { 
