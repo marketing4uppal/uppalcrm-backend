@@ -19,15 +19,21 @@ const LeadSchema = new mongoose.Schema(
       trim: true
     },
     email: { 
-      type: String, 
-      required: false,  // ✅ Not required
-      max: 100,
-      trim: true,
-      lowercase: true,
-      // ✅ FIX: Only require uniqueness if email is provided
-      sparse: true,  // This allows multiple null/undefined values
-      unique: false  // Leads can have duplicate emails (unlike contacts)
+  type: String, 
+  required: false,  // Make it optional
+  max: 100,
+  trim: true,
+  lowercase: true,
+  default: null,    // Default to null
+  validate: {
+    validator: function(v) {
+      // If email is provided, it must be valid
+      if (v === null || v === undefined || v === '') return true;
+      return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
     },
+    message: 'Please enter a valid email'
+  }
+},
     phone: { 
       type: String, 
       required: false,  // ✅ Not required

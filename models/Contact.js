@@ -18,15 +18,21 @@ const ContactSchema = new mongoose.Schema(
       max: 50
     },
     email: { 
-      type: String, 
-      required: false,  // ✅ Not required
-      trim: true,
-      lowercase: true,
-      max: 100,
-      // ✅ FIX: Only require uniqueness if email is provided
-      sparse: true,  // This allows multiple null/undefined values
-      unique: true   // But ensures uniqueness when email IS provided
+  type: String, 
+  required: false,  // Make it optional
+  trim: true,
+  lowercase: true,
+  max: 100,
+  default: null,    // Default to null
+  validate: {
+    validator: function(v) {
+      // If email is provided, it must be valid
+      if (v === null || v === undefined || v === '') return true;
+      return /^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(v);
     },
+    message: 'Please enter a valid email'
+  }
+},
     phone: { 
       type: String,
       required: false,  // ✅ Not required

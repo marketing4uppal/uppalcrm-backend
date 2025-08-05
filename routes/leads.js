@@ -321,40 +321,58 @@ router.post('/:id/restore', auth, async (req, res) => {
   }
 });
 
-// POST a new lead for the user's organization (Proper Mongoose implementation)
+// POST a new lead for the user's organization (FIXED to handle null emails)
 router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   
   console.log('✅ PROPER: Creating lead with data:', { firstName, lastName, email, phone });
   
   try {
+    // Clean the email - convert empty string to null
+    const cleanEmail = email && email.trim() !== '' ? email.trim() : null;
+    const cleanFirstName = firstName && firstName.trim() !== '' ? firstName.trim() : null;
+    const cleanPhone = phone && phone.trim() !== '' ? phone.trim() : null;
+    
     // Step 1: Create the Contact first (since Lead requires contactId)
-    // Step 1: Create the Contact first (since Lead now requires contactId)
-const newContact = new Contact({
-  firstName,
-  lastName,
-  email: email || undefined,  // Only set if provided
-  phone,
-  organizationId: req.user.organizationId,
-  createdBy: req.user.id
-});
-
+    const contactData = {
+      firstName: cleanFirstName,
+      lastName: lastName.trim(),
+      organizationId: req.user.organizationId,
+      createdBy: req.user.id
+    };
+    
+    // Only add email and phone if they have values
+    if (cleanEmail) {
+      contactData.email = cleanEmail;
+    }
+    if (cleanPhone) {
+      contactData.phone = cleanPhone;
+    }
+    
+    const newContact = new Contact(contactData);
     const savedContact = await newContact.save();
     console.log('✅ PROPER: Contact created successfully:', savedContact._id);
 
     // Step 2: Create the Lead with contactId reference
-    const newLead = new Lead({
-      firstName: firstName || '',  // Allow empty firstName
-      lastName,                    // Required field
-      email: email || '',          // Allow empty email
-      phone: phone || '',          // Allow empty phone
+    const leadData = {
+      firstName: cleanFirstName || '',
+      lastName: lastName.trim(),
       leadSource: leadSource || 'other',
       leadStage: leadStage || 'New',
       contactId: savedContact._id,
       organizationId: req.user.organizationId,
       createdBy: req.user.id
-    });
+    };
+    
+    // Only add email and phone if they have values
+    if (cleanEmail) {
+      leadData.email = cleanEmail;
+    }
+    if (cleanPhone) {
+      leadData.phone = cleanPhone;
+    }
 
+    const newLead = new Lead(leadData);
     const savedLead = await newLead.save();
     console.log('✅ PROPER: Lead created successfully:', savedLead._id);
 
@@ -364,19 +382,19 @@ const newContact = new Contact({
         leadId: savedLead._id,
         action: 'created',
         changes: {
-          firstName: firstName ? 'created' : undefined,
+          firstName: cleanFirstName ? 'created' : undefined,
           lastName: 'created',
-          email: email ? 'created' : undefined,
-          phone: phone ? 'created' : undefined,
+          email: cleanEmail ? 'created' : undefined,
+          phone: cleanPhone ? 'created' : undefined,
           leadSource: leadSource ? 'created' : undefined,
           leadStage: leadStage || 'New'
         },
         oldValues: {},
         newValues: {
-          firstName: firstName || null,
-          lastName,
-          email: email || null,
-          phone: phone || null,
+          firstName: cleanFirstName,
+          lastName: lastName.trim(),
+          email: cleanEmail,
+          phone: cleanPhone,
           leadSource: leadSource || null,
           leadStage: leadStage || 'New'
         },
@@ -395,8 +413,8 @@ const newContact = new Contact({
     if (leadStage === 'Qualified') {
       try {
         const newDeal = new Deal({
-          firstName: firstName || 'N/A',
-          lastName,
+          firstName: cleanFirstName || 'N/A',
+          lastName: lastName.trim(),
           stage: 'Qualified',
           closeDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           leadSource: leadSource || 'other',
@@ -433,14 +451,14 @@ const newContact = new Contact({
   } catch (error) {
     console.error('✅ PROPER: Error in lead creation:', error);
     
-   // In the POST route, modify the duplicate check
-if (error.code === 11000) {
-  if (error.keyPattern?.email && email) {  // Only check if email is provided
-    return res.status(400).json({ 
-      message: 'A lead or contact with this email already exists' 
-    });
-  }
-}
+    // Handle duplicate email check - only if email was provided
+    if (error.code === 11000) {
+      if (error.keyPattern?.email && cleanEmail) {
+        return res.status(400).json({ 
+          message: 'A lead or contact with this email already exists' 
+        });
+      }
+    }
     
     res.status(400).json({ message: error.message });
   }
