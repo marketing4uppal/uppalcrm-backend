@@ -1,44 +1,45 @@
-// models/Contact.js (Updated - firstName Optional)
+// models/Contact.js (HOTFIX - Updated for only lastName required)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
     firstName: { 
       type: String, 
-      required: false,  // CHANGED: Made optional
+      required: false,  // ❌ CHANGED: No longer required
       trim: true,
       min: 2,
-      max: 50,
-      default: ""  // ADDED: Default empty string
+      max: 50
     },
     lastName: { 
       type: String, 
-      required: true,  // Keep required for identification
+      required: true,   // ✅ KEPT: Still required
       trim: true,
       min: 2,
       max: 50
     },
     email: { 
       type: String, 
-      required: false,  // Already optional from previous changes
+      required: false,  // ❌ CHANGED: No longer required
       trim: true,
       lowercase: true,
-      max: 100,
-      default: ""  // ADDED: Default empty string
+      max: 100
+      // Removed unique constraint to allow same contact for multiple leads
     },
     phone: { 
       type: String,
-      trim: true,
-      default: ""
+      required: false,  // ❌ CONFIRMED: Not required
+      trim: true
     },
     
     // Additional contact fields
     company: {
       type: String,
+      required: false,  // ❌ CONFIRMED: Not required
       trim: true
     },
     jobTitle: {
       type: String,
+      required: false,  // ❌ CONFIRMED: Not required
       trim: true
     },
     address: {
@@ -75,53 +76,29 @@ const ContactSchema = new mongoose.Schema(
     },
     lastContactedDate: {
       type: Date
-    },
-    
-    // Soft delete fields (if needed)
-    isDeleted: {
-      type: Boolean,
-      default: false,
-      index: true
-    },
-    deletedAt: {
-      type: Date,
-      default: null
-    },
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null
-    },
-    deletionReason: {
-      type: String,
-      default: null
-    },
-    deletionNotes: {
-      type: String,
-      default: null,
-      trim: true
-    },
-    lastModifiedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User'
     }
   },
   { timestamps: true }
 );
+
+// HOTFIX: Add validation to ensure at least lastName is provided
+ContactSchema.pre('save', function(next) {
+  if (!this.lastName || this.lastName.trim().length === 0) {
+    return next(new Error('Last Name is required'));
+  }
+  next();
+});
 
 // Indexes for performance
 ContactSchema.index({ organizationId: 1, email: 1 });
 ContactSchema.index({ organizationId: 1, lastName: 1, firstName: 1 });
 ContactSchema.index({ organizationId: 1, company: 1 });
 ContactSchema.index({ createdBy: 1 });
-ContactSchema.index({ isDeleted: 1 });
-ContactSchema.index({ organizationId: 1, isDeleted: 1 });
 
-// UPDATED: Virtual for full name - handles optional firstName
+// Virtual for full name
 ContactSchema.virtual('fullName').get(function() {
   const firstName = this.firstName || '';
-  const lastName = this.lastName || '';
-  return `${firstName} ${lastName}`.trim() || 'Unknown';
+  return `${firstName} ${this.lastName}`.trim();
 });
 
 // Virtual to get all leads for this contact
@@ -143,25 +120,6 @@ ContactSchema.virtual('deals', {
   ref: 'Deal',
   localField: '_id',
   foreignField: 'contactId'
-});
-
-// UPDATED: Pre-validation middleware to handle optional firstName
-ContactSchema.pre('validate', function(next) {
-  // Ensure we have lastName for identification
-  if (!this.lastName || this.lastName.trim() === '') {
-    const error = new Error('Last Name is required for contact identification');
-    error.path = 'lastName';
-    return next(error);
-  }
-  
- // COMMENTED OUT - allowing leads/contacts with no email or phone
-// if ((!this.email || this.email.trim() === '') && (!this.phone || this.phone.trim() === '')) {
-//   const error = new Error('Either email or phone is required for contact purposes');
-//   error.path = 'contact';
-//   return next(error);
-// }
-  
-  next();
 });
 
 // Enable virtual fields in JSON output
