@@ -1,45 +1,44 @@
-// models/Contact.js (HOTFIX - Updated for only lastName required)
+// models/Contact.js (Proper Fix - Only lastName required)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
     firstName: { 
       type: String, 
-      required: false,  // ❌ CHANGED: No longer required
+      required: false,  // ✅ CHANGED: No longer required
       trim: true,
-      min: 2,
+      min: 1,  // Changed from 2 to 1 to allow single characters
       max: 50
     },
     lastName: { 
       type: String, 
       required: true,   // ✅ KEPT: Still required
       trim: true,
-      min: 2,
+      min: 1,  // Changed from 2 to 1 to allow single characters
       max: 50
     },
     email: { 
       type: String, 
-      required: false,  // ❌ CHANGED: No longer required
+      required: false,  // ✅ CHANGED: No longer required
       trim: true,
       lowercase: true,
       max: 100
-      // Removed unique constraint to allow same contact for multiple leads
     },
     phone: { 
       type: String,
-      required: false,  // ❌ CONFIRMED: Not required
+      required: false,  // ✅ CONFIRMED: Not required
       trim: true
     },
     
     // Additional contact fields
     company: {
       type: String,
-      required: false,  // ❌ CONFIRMED: Not required
+      required: false,  // ✅ CONFIRMED: Not required
       trim: true
     },
     jobTitle: {
       type: String,
-      required: false,  // ❌ CONFIRMED: Not required
+      required: false,  // ✅ CONFIRMED: Not required
       trim: true
     },
     address: {
@@ -81,14 +80,6 @@ const ContactSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// HOTFIX: Add validation to ensure at least lastName is provided
-ContactSchema.pre('save', function(next) {
-  if (!this.lastName || this.lastName.trim().length === 0) {
-    return next(new Error('Last Name is required'));
-  }
-  next();
-});
-
 // Indexes for performance
 ContactSchema.index({ organizationId: 1, email: 1 });
 ContactSchema.index({ organizationId: 1, lastName: 1, firstName: 1 });
@@ -98,7 +89,8 @@ ContactSchema.index({ createdBy: 1 });
 // Virtual for full name
 ContactSchema.virtual('fullName').get(function() {
   const firstName = this.firstName || '';
-  return `${firstName} ${this.lastName}`.trim();
+  const lastName = this.lastName || '';
+  return `${firstName} ${lastName}`.trim();
 });
 
 // Virtual to get all leads for this contact

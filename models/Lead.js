@@ -1,4 +1,4 @@
-// models/Lead.js (HOTFIX - Updated for only lastName required)
+// models/Lead.js (Proper Fix - Only lastName required)
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema(
@@ -6,29 +6,28 @@ const LeadSchema = new mongoose.Schema(
     // Lead inquiry details
     firstName: { 
       type: String, 
-      required: false,  // ❌ CHANGED: No longer required
-      min: 2, 
+      required: false,  // ✅ CHANGED: No longer required
+      min: 1,           // Changed from 2 to 1 to be more flexible
       max: 50,
       trim: true
     },
     lastName: { 
       type: String, 
       required: true,   // ✅ KEPT: Still required
-      min: 2, 
+      min: 1,           // Changed from 2 to 1 to be more flexible
       max: 50,
       trim: true
     },
     email: { 
       type: String, 
-      required: false,  // ❌ CHANGED: No longer required
+      required: false,  // ✅ CHANGED: No longer required
       max: 100,
       trim: true,
       lowercase: true
-      // Removed unique constraint - same person can have multiple leads
     },
     phone: { 
       type: String, 
-      required: false,  // ❌ CONFIRMED: Not required
+      required: false,  // ✅ CONFIRMED: Not required
       default: "",
       trim: true
     },
@@ -48,12 +47,12 @@ const LeadSchema = new mongoose.Schema(
     // Lead details
     company: {
       type: String,
-      required: false,  // ❌ CONFIRMED: Not required
+      required: false,  // ✅ CONFIRMED: Not required
       trim: true
     },
     jobTitle: {
       type: String,
-      required: false,  // ❌ CONFIRMED: Not required
+      required: false,  // ✅ CONFIRMED: Not required
       trim: true
     },
     inquiryType: {
@@ -145,14 +144,6 @@ const LeadSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// HOTFIX: Add validation to ensure at least lastName is provided
-LeadSchema.pre('save', function(next) {
-  if (!this.lastName || this.lastName.trim().length === 0) {
-    return next(new Error('Last Name is required'));
-  }
-  next();
-});
-
 // Indexes for performance
 LeadSchema.index({ organizationId: 1, leadStage: 1 });
 LeadSchema.index({ organizationId: 1, leadSource: 1 });
@@ -165,7 +156,8 @@ LeadSchema.index({ createdBy: 1 });
 // Virtual for full name
 LeadSchema.virtual('fullName').get(function() {
   const firstName = this.firstName || '';
-  return `${firstName} ${this.lastName}`.trim();
+  const lastName = this.lastName || '';
+  return `${firstName} ${lastName}`.trim();
 });
 
 // Method to check if lead can be deleted

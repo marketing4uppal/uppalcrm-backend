@@ -1,4 +1,4 @@
-// routes/leads.js (Complete Fixed File)
+// routes/leads.js (Updated with Proper POST Route)
 const express = require('express');
 const router = express.Router();
 const Lead = require('../models/Lead.js');
@@ -58,71 +58,45 @@ router.get('/:id', auth, async (req, res) => {
   }
 });
 
-// POST a new lead - AGGRESSIVE HOTFIX (completely bypass all validation)
+// POST a new lead for the user's organization (Proper Mongoose implementation)
 router.post('/', auth, async (req, res) => {
   const { firstName, lastName, email, phone, leadSource, leadStage } = req.body;
   
-  console.log('🚨 AGGRESSIVE HOTFIX: Creating lead with data:', { firstName, lastName, email, phone });
-  
-  // AGGRESSIVE: Validate only lastName manually
-  if (!lastName || lastName.trim().length === 0) {
-    return res.status(400).json({ 
-      message: 'Last Name is required' 
-    });
-  }
+  console.log('✅ PROPER: Creating lead with data:', { firstName, lastName, email, phone });
   
   try {
-    // AGGRESSIVE: Use direct MongoDB insertion bypassing Mongoose validation
-    const mongoose = require('mongoose');
-    const { ObjectId } = mongoose.Types;
-    
-    // Step 1: Insert Contact directly into MongoDB
-    const contactDoc = {
-      _id: new ObjectId(),
-      firstName: firstName || '',
-      lastName: lastName.trim(),
-      email: email || '',
-      phone: phone || '',
-      organizationId: new ObjectId(req.user.organizationId),
-      createdBy: new ObjectId(req.user.id),
-      isActive: true,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    // Direct MongoDB insert bypassing all Mongoose validation
-    const db = mongoose.connection.db;
-    const contactResult = await db.collection('contacts').insertOne(contactDoc);
-    console.log('🚨 AGGRESSIVE: Contact inserted directly:', contactResult.insertedId);
+    // Step 1: Create the Contact first (since Lead requires contactId)
+    const newContact = new Contact({
+      firstName: firstName || '',  // Allow empty firstName
+      lastName,                    // Required field
+      email: email || '',          // Allow empty email
+      phone: phone || '',          // Allow empty phone
+      organizationId: req.user.organizationId,
+      createdBy: req.user.id
+    });
 
-    // Step 2: Insert Lead directly into MongoDB
-    const leadDoc = {
-      _id: new ObjectId(),
-      firstName: firstName || '',
-      lastName: lastName.trim(),
-      email: email || '',
-      phone: phone || '',
+    const savedContact = await newContact.save();
+    console.log('✅ PROPER: Contact created successfully:', savedContact._id);
+
+    // Step 2: Create the Lead with contactId reference
+    const newLead = new Lead({
+      firstName: firstName || '',  // Allow empty firstName
+      lastName,                    // Required field
+      email: email || '',          // Allow empty email
+      phone: phone || '',          // Allow empty phone
       leadSource: leadSource || 'other',
       leadStage: leadStage || 'New',
-      contactId: contactResult.insertedId,
-      organizationId: new ObjectId(req.user.organizationId),
-      createdBy: new ObjectId(req.user.id),
-      isDeleted: false,
-      score: 0,
-      inquiryType: 'new-account',
-      budget: 'not-specified',
-      timeline: 'not-specified',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    const leadResult = await db.collection('leads').insertOne(leadDoc);
-    console.log('🚨 AGGRESSIVE: Lead inserted directly:', leadResult.insertedId);
+      contactId: savedContact._id,
+      organizationId: req.user.organizationId,
+      createdBy: req.user.id
+    });
 
-    // Step 3: Create history entry
-    const historyDoc = {
-      _id: new ObjectId(),
-      leadId: leadResult.insertedId,
+    const savedLead = await newLead.save();
+    console.log('✅ PROPER: Lead created successfully:', savedLead._id);
+
+    // Step 3: Create history entry for lead creation
+    const historyEntry = new LeadHistory({
+      leadId: savedLead._id,
       action: 'created',
       changes: {
         firstName: firstName ? 'created' : undefined,
@@ -135,66 +109,71 @@ router.post('/', auth, async (req, res) => {
       oldValues: {},
       newValues: {
         firstName: firstName || null,
-        lastName: lastName.trim(),
+        lastName,
         email: email || null,
         phone: phone || null,
         leadSource: leadSource || null,
         leadStage: leadStage || 'New'
       },
-      userId: new ObjectId(req.user.id),
-      organizationId: new ObjectId(req.user.organizationId),
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-    
-    await db.collection('leadhistories').insertOne(historyDoc);
-    console.log('🚨 AGGRESSIVE: History entry created');
+      userId: req.user.id,
+      organizationId: req.user.organizationId
+    });
 
-    // Step 4: Return response with the created documents
+    await historyEntry.save();
+    console.log('✅ PROPER: Lead history entry created');
+
+    // Step 4: If lead is Qualified, create a Deal
+    let createdDeal = null;
+    if (leadStage === 'Qualified') {
+      try {
+        const newDeal = new Deal({
+          firstName: firstName || 'N/A',
+          lastName,
+          stage: 'Qualified',
+          closeDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          leadSource: leadSource || 'other',
+          owner: req.user.id,
+          amount: 0,
+          currency: 'USD',
+          leadId: savedLead._id,
+          contactId: savedContact._id,
+          organizationId: req.user.organizationId,
+          createdBy: req.user.id
+        });
+
+        createdDeal = await newDeal.save();
+        console.log('✅ PROPER: Deal created successfully:', createdDeal._id);
+      } catch (dealError) {
+        console.error('Error creating deal:', dealError);
+      }
+    }
+
+    // Step 5: Return response
     const response = {
-      lead: {
-        _id: leadResult.insertedId,
-        firstName: firstName || '',
-        lastName: lastName.trim(),
-        email: email || '',
-        phone: phone || '',
-        leadSource: leadSource || 'other',
-        leadStage: leadStage || 'New',
-        contactId: contactResult.insertedId,
-        organizationId: req.user.organizationId,
-        createdBy: req.user.id,
-        createdAt: leadDoc.createdAt,
-        updatedAt: leadDoc.updatedAt
-      },
-      contact: {
-        _id: contactResult.insertedId,
-        firstName: firstName || '',
-        lastName: lastName.trim(),
-        email: email || '',
-        phone: phone || '',
-        organizationId: req.user.organizationId,
-        createdBy: req.user.id,
-        createdAt: contactDoc.createdAt,
-        updatedAt: contactDoc.updatedAt
-      },
-      message: 'Lead and Contact created successfully (aggressive bypass)'
+      lead: savedLead,
+      contact: savedContact,
+      message: 'Lead and Contact created successfully'
     };
 
-    console.log('🚨 AGGRESSIVE: Success response:', response);
+    if (createdDeal) {
+      response.deal = createdDeal;
+      response.message = 'Lead, Contact, and Deal created successfully';
+    }
+
     res.status(201).json(response);
 
   } catch (error) {
-    console.error('🚨 AGGRESSIVE: Error in lead creation:', error);
-    console.error('🚨 AGGRESSIVE: Full error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error('✅ PROPER: Error in lead creation:', error);
     
-    res.status(500).json({ 
-      message: 'Internal server error during lead creation',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
-    });
+    if (error.code === 11000) {
+      if (error.keyPattern?.email) {
+        return res.status(400).json({ 
+          message: 'A lead or contact with this email already exists' 
+        });
+      }
+    }
+    
+    res.status(400).json({ message: error.message });
   }
 });
 
