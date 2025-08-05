@@ -1,4 +1,4 @@
-// models/Lead.js (Proper Fix - Only lastName required)
+// models/Lead.js (Fix Email Uniqueness Issue)
 const mongoose = require('mongoose');
 
 const LeadSchema = new mongoose.Schema(
@@ -6,28 +6,31 @@ const LeadSchema = new mongoose.Schema(
     // Lead inquiry details
     firstName: { 
       type: String, 
-      required: false,  // ✅ CHANGED: No longer required
-      min: 1,           // Changed from 2 to 1 to be more flexible
+      required: false,  // ✅ Not required
+      min: 1,
       max: 50,
       trim: true
     },
     lastName: { 
       type: String, 
-      required: true,   // ✅ KEPT: Still required
-      min: 1,           // Changed from 2 to 1 to be more flexible
+      required: true,   // ✅ Still required
+      min: 1,
       max: 50,
       trim: true
     },
     email: { 
       type: String, 
-      required: false,  // ✅ CHANGED: No longer required
+      required: false,  // ✅ Not required
       max: 100,
       trim: true,
-      lowercase: true
+      lowercase: true,
+      // ✅ FIX: Only require uniqueness if email is provided
+      sparse: true,  // This allows multiple null/undefined values
+      unique: false  // Leads can have duplicate emails (unlike contacts)
     },
     phone: { 
       type: String, 
-      required: false,  // ✅ CONFIRMED: Not required
+      required: false,  // ✅ Not required
       default: "",
       trim: true
     },
@@ -47,12 +50,12 @@ const LeadSchema = new mongoose.Schema(
     // Lead details
     company: {
       type: String,
-      required: false,  // ✅ CONFIRMED: Not required
+      required: false,
       trim: true
     },
     jobTitle: {
       type: String,
-      required: false,  // ✅ CONFIRMED: Not required
+      required: false,
       trim: true
     },
     inquiryType: {
@@ -143,6 +146,15 @@ const LeadSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ FIX: Pre-save middleware to handle empty emails
+LeadSchema.pre('save', function(next) {
+  // Convert empty email strings to undefined so they don't conflict with uniqueness
+  if (this.email === '') {
+    this.email = undefined;
+  }
+  next();
+});
 
 // Indexes for performance
 LeadSchema.index({ organizationId: 1, leadStage: 1 });

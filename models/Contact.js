@@ -1,44 +1,47 @@
-// models/Contact.js (Proper Fix - Only lastName required)
+// models/Contact.js (Fix Email Uniqueness Issue)
 const mongoose = require('mongoose');
 
 const ContactSchema = new mongoose.Schema(
   {
     firstName: { 
       type: String, 
-      required: false,  // ✅ CHANGED: No longer required
+      required: false,  // ✅ Not required
       trim: true,
-      min: 1,  // Changed from 2 to 1 to allow single characters
+      min: 1,
       max: 50
     },
     lastName: { 
       type: String, 
-      required: true,   // ✅ KEPT: Still required
+      required: true,   // ✅ Still required
       trim: true,
-      min: 1,  // Changed from 2 to 1 to allow single characters
+      min: 1,
       max: 50
     },
     email: { 
       type: String, 
-      required: false,  // ✅ CHANGED: No longer required
+      required: false,  // ✅ Not required
       trim: true,
       lowercase: true,
-      max: 100
+      max: 100,
+      // ✅ FIX: Only require uniqueness if email is provided
+      sparse: true,  // This allows multiple null/undefined values
+      unique: true   // But ensures uniqueness when email IS provided
     },
     phone: { 
       type: String,
-      required: false,  // ✅ CONFIRMED: Not required
+      required: false,  // ✅ Not required
       trim: true
     },
     
     // Additional contact fields
     company: {
       type: String,
-      required: false,  // ✅ CONFIRMED: Not required
+      required: false,
       trim: true
     },
     jobTitle: {
       type: String,
-      required: false,  // ✅ CONFIRMED: Not required
+      required: false,
       trim: true
     },
     address: {
@@ -79,6 +82,15 @@ const ContactSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ✅ FIX: Pre-save middleware to handle empty emails
+ContactSchema.pre('save', function(next) {
+  // Convert empty email strings to undefined so they don't conflict with uniqueness
+  if (this.email === '') {
+    this.email = undefined;
+  }
+  next();
+});
 
 // Indexes for performance
 ContactSchema.index({ organizationId: 1, email: 1 });
